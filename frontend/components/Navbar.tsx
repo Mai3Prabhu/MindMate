@@ -15,7 +15,7 @@ export default function Navbar() {
   useEffect(() => setMounted(true), [])
 
   const navLinks = [
-    { href: '/dashboard', label: 'Home', icon: Home },
+    { href: '/', label: 'Home', icon: Home },
     { href: '/dashboard', label: 'Dashboard', icon: Grid3x3 },
     { href: '/mates', label: 'Mates', icon: Brain },
   ]

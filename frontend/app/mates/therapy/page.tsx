@@ -1,13 +1,26 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import { useSession } from 'next-auth/react'
+
 import Navbar from '@/components/Navbar'
-import { Send, Heart, Sparkles, AlertCircle } from 'lucide-react'
-import { motion } from 'framer-motion'
+import { Send, Heart, Sparkles, AlertCircle, Bot, User, Loader2, Sparkle } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { empatheticReply, classifyEmotion, detectCrisis } from '@/lib/gemini'
+
+interface Message {
+  role: 'user' | 'therapist'
+  content: string
+  timestamp: Date
+  emotion?: string
+  intensity?: number
+  isCrisis?: boolean
+}
 
 export default function TherapyPage() {
+  const { data: session } = useSession()
   const [mode, setMode] = useState<'gentle' | 'conversational' | 'silent'>('gentle')
-  const [messages, setMessages] = useState([
+  const [messages, setMessages] = useState<Message[]>([
     {
       role: 'therapist',
       content: "Hi, I'm here with you. Take a deep breath... How are you feeling coming into this session today?",
@@ -15,7 +28,10 @@ export default function TherapyPage() {
     }
   ])
   const [input, setInput] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [currentEmotion, setCurrentEmotion] = useState<{label: string; intensity: number} | null>(null)
+  const [sessionSummary, setSessionSummary] = useState<string | null>(null)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const modes = [
     { id: 'gentle', label: '🌸 Gentle Listener', desc: 'Warm, validating presence' },
@@ -23,10 +39,39 @@ export default function TherapyPage() {
     { id: 'silent', label: '🌙 Silent Space', desc: 'Reflective, minimal responses' },
   ]
 
-  const handleSend = async () => {
-    if (!input.trim()) return
+  // Auto-scroll to bottom of messages
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
 
-    const userMessage = {
+  const analyzeEmotion = async (text: string) => {
+    try {
+      const result = await classifyEmotion(text, session?.user?.accessToken || '');
+      setCurrentEmotion({
+        label: result.label,
+        intensity: result.intensity
+      });
+      return result;
+    } catch (error) {
+      console.error('Error analyzing emotion:', error);
+      return null;
+    }
+  }
+
+  const checkForCrisis = async (text: string) => {
+    try {
+      const result = await detectCrisis(text, session?.user?.accessToken || '')
+      return result.detected ? result : null
+    } catch (error) {
+      console.error('Error checking for crisis:', error)
+      return null
+    }
+  }
+
+  const handleSend = async () => {
+    if (!input.trim() || isProcessing) return
+
+    const userMessage: Message = {
       role: 'user',
       content: input,
       timestamp: new Date(),
@@ -34,18 +79,62 @@ export default function TherapyPage() {
 
     setMessages(prev => [...prev, userMessage])
     setInput('')
-    setLoading(true)
+    setIsProcessing(true)
 
-    // TODO: Call backend API
-    setTimeout(() => {
-      const therapistMessage = {
-        role: 'therapist',
-        content: "I hear you, and what you're sharing takes courage. Can you tell me more about what that felt like for you?",
-        timestamp: new Date(),
+    try {
+      // Analyze emotion from user's message
+      const emotion = await analyzeEmotion(input)
+      
+      // Check for crisis indicators
+      const crisisCheck = await checkForCrisis(input)
+      
+      if (crisisCheck?.detected) {
+        const crisisMessage: Message = {
+          role: 'therapist',
+          content: crisisCheck.message || 'I\'m concerned about what you\'re sharing. Would you like me to help you find professional support?',
+          timestamp: new Date(),
+          isCrisis: true
+        }
+        setMessages(prev => [...prev, crisisMessage])
+        setIsProcessing(false)
+        return
       }
+
+      // Get empathetic response from Gemini
+      const response = await empatheticReply({
+        userMessage: input,
+        conversationHistory: messages.map(m => ({
+          role: m.role,
+          content: m.content,
+          emotion: m.emotion
+        })),
+        userContext: {
+          preferences: {
+            mode: mode,
+            emotion: emotion?.label || 'neutral'
+          }
+        }
+      }, session?.user?.accessToken || '')
+
+      const therapistMessage: Message = {
+        role: 'therapist',
+        content: response,
+        timestamp: new Date(),
+        emotion: emotion?.label
+      }
+
       setMessages(prev => [...prev, therapistMessage])
-      setLoading(false)
-    }, 1500)
+    } catch (error) {
+      console.error('Error in therapy session:', error)
+      const errorMessage: Message = {
+        role: 'therapist',
+        content: 'I\'m having trouble connecting right now. Could you try again in a moment?',
+        timestamp: new Date()
+      }
+      setMessages(prev => [...prev, errorMessage])
+    } finally {
+      setIsProcessing(false)
+    }
   }
 
   return (
@@ -86,24 +175,24 @@ export default function TherapyPage() {
                     className={`max-w-[80%] px-4 py-3 rounded-2xl ${
                       msg.role === 'user'
                         ? 'bg-brand text-white'
-                        : 'bg-gray-100 dark:bg-dark-deep'
+                        : 'bg-gray-100 dark:bg-dark-card text-gray-800 dark:text-gray-100'
                     }`}
                   >
                     <p className="text-sm">{msg.content}</p>
-                    <p className="text-xs mt-1 opacity-70">
+                    <p className="text-xs mt-1 opacity-70 text-inherit">
                       {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>
                   </div>
                 </motion.div>
               ))}
 
-              {loading && (
+              {isProcessing && (
                 <div className="flex justify-start">
-                  <div className="bg-gray-100 dark:bg-dark-deep px-4 py-3 rounded-2xl">
+                  <div className="bg-gray-100 dark:bg-dark-card px-4 py-3 rounded-2xl text-gray-800 dark:text-gray-100">
                     <div className="flex gap-1">
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                      <div className="w-2 h-2 bg-gray-500 dark:bg-gray-300 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                      <div className="w-2 h-2 bg-gray-500 dark:bg-gray-300 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                      <div className="w-2 h-2 bg-gray-500 dark:bg-gray-300 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                     </div>
                   </div>
                 </div>
@@ -118,13 +207,13 @@ export default function TherapyPage() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleSend()}
                 placeholder="Share what's on your mind..."
-                className="input flex-1"
-                disabled={loading}
+                className="flex-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-dark-border focus:outline-none focus:ring-2 focus:ring-brand bg-white dark:bg-dark-card text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
+                disabled={isProcessing}
               />
               <button
                 onClick={handleSend}
-                disabled={loading || !input.trim()}
-                className="btn-primary disabled:opacity-50"
+                disabled={!input.trim() || isProcessing}
+                className="p-3 rounded-xl bg-brand text-white hover:bg-brand-deep focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <Send className="w-5 h-5" />
               </button>

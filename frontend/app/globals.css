@@ -4,29 +4,43 @@
 
 @layer base {
   :root {
-    --brand: #cabdff;
-    --brand-deep: #b6a6ff;
-    --brand-light: #e0d7ff;
-    --yellow: #f8e27c;
-    --teal: #a7e8e0;
-    --blush: #fbd0d9;
+    --brand: #9D8AFF;
+    --brand-deep: #7B61FF;
+    --brand-light: #D1C4FF;
+    --yellow: #F5C851;
+    --teal: #5ED3C9;
+    --blush: #FFA3B1;
   }
 
   body {
-    @apply font-sans antialiased;
+    @apply font-sans antialiased text-light-text dark:text-dark-text bg-light-bg dark:bg-dark-bg transition-colors duration-200;
   }
 
+  /* Typography */
   h1, h2, h3, h4, h5, h6 {
-    @apply font-heading;
+    @apply font-heading text-light-text dark:text-dark-text;
+  }
+  
+  h1 { @apply text-4xl font-bold; }
+  h2 { @apply text-3xl font-semibold; }
+  h3 { @apply text-2xl font-semibold; }
+  
+  p, li, a, button, input, textarea, select {
+    @apply text-light-text dark:text-dark-text/90;
+  }
+  
+  /* Links */
+  a {
+    @apply text-brand hover:text-brand-deep transition-colors;
   }
 }
 
 @layer components {
   /* Button Styles */
   .btn-primary {
-    @apply px-6 py-3 bg-brand text-white rounded-xl font-medium 
+    @apply px-6 py-3 bg-brand text-white dark:text-dark-text rounded-xl font-medium 
            hover:bg-brand-deep focus:ring-2 focus:ring-brand focus:ring-offset-2 
-           transition-all duration-200 ease-out;
+           transition-all duration-200 ease-out shadow-md hover:shadow-lg;
   }
 
   .btn-secondary {
@@ -44,9 +58,9 @@
 
   /* Card Styles */
   .card {
-    @apply bg-white dark:bg-dark-card rounded-2xl shadow-soft dark:shadow-soft-dark 
+    @apply bg-light-card dark:bg-dark-card rounded-2xl shadow-soft dark:shadow-soft-dark 
            border border-light-border dark:border-dark-border 
-           transition-all duration-200;
+           transition-all duration-200 text-light-text dark:text-dark-text;
   }
 
   .card-gradient {
@@ -56,11 +70,12 @@
   }
 
   /* Input Styles */
-  .input {
-    @apply w-full px-4 py-3 bg-white dark:bg-dark-card 
+  .input, .textarea {
+    @apply w-full px-4 py-3 bg-light-card dark:bg-dark-card/80 
            border-2 border-light-border dark:border-dark-border 
            rounded-xl focus:border-brand focus:ring-2 focus:ring-brand/20 
-           outline-none transition-all duration-200;
+           outline-none transition-all duration-200 text-light-text dark:text-dark-text
+           placeholder-light-text/50 dark:placeholder-dark-text/50;
   }
 
   .textarea {
@@ -74,7 +89,7 @@
   .glass-panel {
     @apply bg-white/80 dark:bg-dark-card/80 backdrop-blur-md 
            border border-light-border/50 dark:border-dark-border/50 
-           shadow-xl;
+           shadow-xl text-light-text dark:text-dark-text;
   }
 
   /* Focus Visible */
