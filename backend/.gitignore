@@ -1,8 +1,7 @@
-backend/.env
+.env
 backend/.env.*
 backend/venv/
 backend/logs/
-backend/config.py
 backend/QUICK_FIX_SUMMARY.md
 backend/SUPABASE_EMAIL_FIX.md
 backend/TESTING_GUIDE.md
