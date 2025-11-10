@@ -1,0 +1,13 @@
+backend/.env
+backend/.env.*
+backend/venv/
+backend/logs/
+backend/config.py
+backend/QUICK_FIX_SUMMARY.md
+backend/SUPABASE_EMAIL_FIX.md
+backend/TESTING_GUIDE.md
+backend/__pycache__/
+backend/routers/__pycache__/
+backend/services/__pycache__/
+backend/.pytest_cache/
+backend/.mypy_cache/
