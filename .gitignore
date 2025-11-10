@@ -23,4 +23,6 @@ backend/routers/__pycache__/
 backend/services/__pycache__/
 backend/.pytest_cache/
 backend/.mypy_cache/
-backend/config.py
+backend/SUPABASE_EMAIL_FIX.md
+backend/QUICK_FIX_SUMMARY.md
+backend/TESTING_GUIDE.md
