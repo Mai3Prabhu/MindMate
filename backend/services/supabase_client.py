@@ -1,16 +1,25 @@
 from supabase import create_client, Client
-import os
-from dotenv import load_dotenv
+import sys
+sys.path.append('..')
+from config import get_settings
+import logging
 
-load_dotenv()
+logger = logging.getLogger(__name__)
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+# Get settings
+settings = get_settings()
 
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in environment variables")
+# Create Supabase client
+try:
+    supabase: Client = create_client(
+        settings.supabase_url,
+        settings.supabase_service_role_key
+    )
+    logger.info("Supabase client initialized successfully")
+except Exception as e:
+    logger.error(f"Failed to create Supabase client: {str(e)}")
+    raise
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def get_supabase() -> Client:
     """Get Supabase client instance"""
