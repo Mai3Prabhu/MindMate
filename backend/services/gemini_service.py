@@ -11,7 +11,7 @@ if not GEMINI_API_KEY:
     raise ValueError("GEMINI_API_KEY must be set in environment variables")
 
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-pro')
+model = genai.GenerativeModel('models/gemini-flash-latest') # this is free and good to use
 
 async def get_empathetic_reply(user_message: str, conversation_history: list, user_context: dict) -> str:
     """
