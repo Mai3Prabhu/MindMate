@@ -9,8 +9,16 @@ from pathlib import Path
 import sys
 
 from routers import auth, users, journal, emotion, therapy, feelhear, meditation
-from routers import content, wellness, braingym, symphony, gemini_routes
+from routers import content, wellness, braingym, symphony, gemini_routes, feelflow
 from config import get_settings
+from middleware import (
+    SecurityHeadersMiddleware,
+    RequestLoggingMiddleware,
+    CORSSecurityMiddleware,
+    limiter,
+    rate_limit_exceeded_handler,
+)
+from slowapi.errors import RateLimitExceeded
 
 load_dotenv()
 
@@ -40,6 +48,12 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Add rate limiter to app state
+app.state.limiter = limiter
+
+# Add rate limit exception handler
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -57,10 +71,21 @@ async def startup_event():
         sys.exit(1)
 
 
-# CORS middleware
+# Get settings
 settings = get_settings()
 allowed_origins = settings.allowed_origins.split(",")
 
+# Add security middleware (order matters - first added is outermost)
+# 1. Security headers (outermost)
+app.add_middleware(SecurityHeadersMiddleware)
+
+# 2. Request logging
+app.add_middleware(RequestLoggingMiddleware)
+
+# 3. CORS security checks
+app.add_middleware(CORSSecurityMiddleware, allowed_origins=allowed_origins)
+
+# 4. CORS middleware (FastAPI built-in)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
@@ -68,6 +93,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 5. Trusted host middleware (innermost)
+# Uncomment for production
+# app.add_middleware(
+#     TrustedHostMiddleware,
+#     allowed_hosts=["localhost", "*.mindmate.app"]
+# )
 
 # Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
@@ -82,6 +114,7 @@ app.include_router(wellness.router, prefix="/api/digital-wellness", tags=["Digit
 app.include_router(braingym.router, prefix="/api/braingym", tags=["Brain Gym"])
 app.include_router(symphony.router, prefix="/api/symphony", tags=["Symphony"])
 app.include_router(gemini_routes.router, prefix="/api/gemini", tags=["Gemini AI"])
+app.include_router(feelflow.router, prefix="/api/feelflow", tags=["FeelFlow"])
 
 @app.get("/")
 async def root():
@@ -118,4 +151,4 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

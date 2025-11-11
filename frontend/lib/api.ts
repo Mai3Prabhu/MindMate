@@ -1,268 +1,405 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+/**
+ * API Client for MindMate
+ * Handles all API requests with authentication
+ */
 
-interface RequestOptions extends RequestInit {
-  token?: string
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+class APIError extends Error {
+  constructor(message: string, public statusCode: number, public details?: any) {
+    super(message);
+    this.name = 'APIError';
+  }
 }
 
-async function apiRequest<T>(
+async function fetchAPI<T>(
   endpoint: string,
-  options: RequestOptions = {}
+  options: RequestInit = {}
 ): Promise<T> {
-  const { token, ...fetchOptions } = options
-
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
-    ...fetchOptions.headers,
+    ...options.headers,
+  };
+  
+  try {
+    const response = await fetch(`${API_URL}${endpoint}`, {
+      ...options,
+      headers,
+      credentials: 'include', // Always send cookies
+    });
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Request failed' }));
+      throw new APIError(
+        error.message || error.detail || 'Request failed',
+        response.status,
+        error
+      );
+    }
+    
+    // Handle empty responses
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      return await response.json();
+    }
+    
+    return response as any;
+  } catch (error) {
+    if (error instanceof APIError) {
+      throw error;
+    }
+    throw new APIError('Network error. Please check your connection.', 0);
   }
-
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`
-  }
-
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    ...fetchOptions,
-    headers,
-    credentials: 'include', // Include cookies for JWT
-  })
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Request failed' }))
-    throw new Error(error.message || `HTTP ${response.status}`)
-  }
-
-  return response.json()
 }
 
-// Auth APIs
-export const authAPI = {
-  register: (data: {
-    name: string
-    username: string
-    email: string
-    password: string
-    user_type: string
-  }) => apiRequest('/api/auth/register', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  }),
-
-  login: (email: string, password: string) =>
-    apiRequest('/api/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
-    }),
-
-  googleAuth: (token: string) =>
-    apiRequest('/api/auth/google', {
-      method: 'POST',
-      body: JSON.stringify({ token }),
-    }),
-
-  logout: (token: string) =>
-    apiRequest('/api/auth/logout', {
-      method: 'POST',
-      token,
-    }),
-
-  refresh: () =>
-    apiRequest('/api/auth/refresh', {
-      method: 'POST',
-    }),
-}
-
-// User APIs
-export const userAPI = {
-  getProfile: (token: string) =>
-    apiRequest('/api/users/me', { token }),
-
-  updateProfile: (token: string, data: any) =>
-    apiRequest('/api/users/me', {
-      method: 'PUT',
-      token,
-      body: JSON.stringify(data),
-    }),
-}
-
-// Journal APIs
+// Journal API
 export const journalAPI = {
-  getEntries: (token: string) =>
-    apiRequest('/api/journal', { token }),
-
-  createEntry: (token: string, data: any) =>
-    apiRequest('/api/journal', {
+  async checkPIN() {
+    return fetchAPI<{ has_pin: boolean }>('/api/journal/check-pin');
+  },
+  
+  async setPIN(pin: string) {
+    return fetchAPI<{ message: string }>('/api/journal/set-pin', {
       method: 'POST',
-      token,
+      body: JSON.stringify({ pin }),
+    });
+  },
+  
+  async validatePIN(pinHash: string) {
+    return fetchAPI<{ valid: boolean; pin_set: boolean }>('/api/journal/validate-pin', {
+      method: 'POST',
+      body: JSON.stringify({ pin_hash: pinHash }),
+    });
+  },
+  
+  async getEntries(limit: number = 50, offset: number = 0) {
+    return fetchAPI<Array<{
+      id: string;
+      content: string;
+      mood_tag?: string;
+      theme: string;
+      timestamp: string;
+    }>>(`/api/journal?limit=${limit}&offset=${offset}`);
+  },
+  
+  async createEntry(data: { content: string; mood_tag?: string; theme?: string }) {
+    return fetchAPI<{
+      id: string;
+      content: string;
+      mood_tag?: string;
+      theme: string;
+      timestamp: string;
+    }>('/api/journal', {
+      method: 'POST',
       body: JSON.stringify(data),
-    }),
-
-  updateEntry: (token: string, id: string, data: any) =>
-    apiRequest(`/api/journal/${id}`, {
+    });
+  },
+  
+  async updateEntry(id: string, data: { content?: string; mood_tag?: string; theme?: string }) {
+    return fetchAPI<{
+      id: string;
+      content: string;
+      mood_tag?: string;
+      theme: string;
+      timestamp: string;
+    }>(`/api/journal/${id}`, {
       method: 'PUT',
-      token,
       body: JSON.stringify(data),
-    }),
-
-  deleteEntry: (token: string, id: string) =>
-    apiRequest(`/api/journal/${id}`, {
+    });
+  },
+  
+  async deleteEntry(id: string) {
+    return fetchAPI<{ message: string }>(`/api/journal/${id}`, {
       method: 'DELETE',
-      token,
-    }),
-}
+    });
+  },
+  
+  async getStreaks() {
+    return fetchAPI<{
+      current_streak: number;
+      longest_streak: number;
+      total_entries: number;
+      entries_by_date: Record<string, number>;
+    }>('/api/journal/streaks');
+  },
+};
 
-// Emotion APIs
-export const emotionAPI = {
-  getLogs: (token: string, limit?: number) =>
-    apiRequest(`/api/emotion/logs${limit ? `?limit=${limit}` : ''}`, { token }),
-
-  createLog: (token: string, data: any) =>
-    apiRequest('/api/emotion/logs', {
-      method: 'POST',
-      token,
-      body: JSON.stringify(data),
-    }),
-
-  deleteLog: (token: string, id: string) =>
-    apiRequest(`/api/emotion/logs/${id}`, {
-      method: 'DELETE',
-      token,
-    }),
-}
-
-// Therapy APIs
-export const therapyAPI = {
-  startSession: (token: string, mode: string) =>
-    apiRequest('/api/therapy/session', {
-      method: 'POST',
-      token,
-      body: JSON.stringify({ mode }),
-    }),
-
-  sendMessage: (token: string, sessionId: string, message: string) =>
-    apiRequest('/api/therapy/message', {
-      method: 'POST',
-      token,
-      body: JSON.stringify({ session_id: sessionId, message }),
-    }),
-
-  getHistory: (token: string) =>
-    apiRequest('/api/therapy/history', { token }),
-
-  getSession: (token: string, sessionId: string) =>
-    apiRequest(`/api/therapy/session/${sessionId}`, { token }),
-}
-
-// FeelHear APIs
+// FeelHear API
 export const feelHearAPI = {
-  uploadAudio: async (token: string, audioBlob: Blob) => {
-    const formData = new FormData()
-    formData.append('audio', audioBlob, 'recording.webm')
+  async analyzeAudio(audioBase64: string, durationSeconds: number) {
+    return fetchAPI<{
+      session_id: string;
+      emotion: string;
+      intensity: number;
+      secondary_emotions: string[];
+      message: string;
+      transcription?: string;
+    }>('/api/feelhear/analyze', {
+      method: 'POST',
+      body: JSON.stringify({
+        audio_base64: audioBase64,
+        duration_seconds: durationSeconds,
+      }),
+    });
+  },
+  
+  async saveSession(sessionId: string) {
+    return fetchAPI<{ message: string }>('/api/feelhear/save', {
+      method: 'POST',
+      body: JSON.stringify({ session_id: sessionId }),
+    });
+  },
+  
+  async getHistory(limit: number = 10, savedOnly: boolean = false) {
+    return fetchAPI<Array<{
+      id: string;
+      analyzed_emotion: string;
+      intensity: number;
+      summary: string;
+      timestamp: string;
+      saved: boolean;
+    }>>(`/api/feelhear/history?limit=${limit}&saved_only=${savedOnly}`);
+  },
+  
+  async deleteSession(sessionId: string) {
+    return fetchAPI<{ message: string }>(`/api/feelhear/${sessionId}`, {
+      method: 'DELETE',
+    });
+  },
+};
 
-    const response = await fetch(`${API_URL}/api/feelhear/upload`, {
+// FeelFlow API
+export const feelFlowAPI = {
+  async logMood(data: { label: string; intensity: number; snippet?: string }) {
+    return fetchAPI<{
+      id: string;
+      label: string;
+      intensity: number;
+      source: string;
+      timestamp: string;
+      snippet?: string;
+    }>('/api/feelflow/mood', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+  
+  async getHistory(days: number = 30, startDate?: string, endDate?: string) {
+    let url = `/api/feelflow/history?days=${days}`;
+    if (startDate) url += `&start_date=${startDate}`;
+    if (endDate) url += `&end_date=${endDate}`;
+    
+    return fetchAPI<Array<{
+      id: string;
+      label: string;
+      intensity: number;
+      source: string;
+      timestamp: string;
+      snippet?: string;
+    }>>(url);
+  },
+  
+  async getInsights(days: number = 30) {
+    return fetchAPI<{
+      insights: string;
+      dominant_emotions: Array<{ emotion: string; count: number; avg_intensity: number }>;
+      patterns: string[];
+      suggestions: string[];
+    }>('/api/feelflow/insights', {
+      method: 'POST',
+      body: JSON.stringify({ days }),
+    });
+  },
+  
+  async exportHistory(format: 'txt' | 'json', days: number = 30) {
+    const response = await fetch(`${API_URL}/api/feelflow/export`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
       },
-      body: formData,
-      credentials: 'include',
-    })
-
+      body: JSON.stringify({ format, days }),
+    });
+    
     if (!response.ok) {
-      throw new Error('Upload failed')
+      throw new APIError('Export failed', response.status);
     }
-
-    return response.json()
+    
+    if (format === 'txt') {
+      const blob = await response.blob();
+      return blob;
+    }
+    
+    return await response.json();
   },
-
-  getResponse: (token: string, sessionId: string) =>
-    apiRequest(`/api/feelhear/response/${sessionId}`, { token }),
-
-  saveSession: (token: string, sessionId: string) =>
-    apiRequest('/api/feelhear/save', {
-      method: 'POST',
-      token,
-      body: JSON.stringify({ session_id: sessionId }),
-    }),
-}
-
-// Meditation APIs
-export const meditationAPI = {
-  getSessions: (token: string) =>
-    apiRequest('/api/meditation/sessions', { token }),
-
-  createSession: (token: string, data: any) =>
-    apiRequest('/api/meditation/sessions', {
-      method: 'POST',
-      token,
-      body: JSON.stringify(data),
-    }),
-}
-
-// Content Library APIs
-export const contentAPI = {
-  getItems: (token: string, filters?: any) => {
-    const params = new URLSearchParams(filters).toString()
-    return apiRequest(`/api/content/items${params ? `?${params}` : ''}`, { token })
+  
+  async deleteMood(moodId: string) {
+    return fetchAPI<{ message: string }>(`/api/feelflow/${moodId}`, {
+      method: 'DELETE',
+    });
   },
+};
 
-  trackProgress: (token: string, contentId: string, action: 'opened' | 'completed') =>
-    apiRequest('/api/content/progress', {
-      method: 'POST',
-      token,
-      body: JSON.stringify({ content_id: contentId, action }),
-    }),
-}
-
-// Digital Wellness APIs
-export const wellnessAPI = {
-  getMetrics: (token: string, days?: number) =>
-    apiRequest(`/api/digital-wellness/metrics${days ? `?days=${days}` : ''}`, { token }),
-
-  submitMetrics: (token: string, data: any) =>
-    apiRequest('/api/digital-wellness/metrics', {
-      method: 'POST',
-      token,
-      body: JSON.stringify(data),
-    }),
-}
-
-// Wellness Plan APIs
-export const wellnessPlanAPI = {
-  getState: (token: string) =>
-    apiRequest('/api/wellness-plan/state', { token }),
-
-  updateState: (token: string, data: any) =>
-    apiRequest('/api/wellness-plan/state', {
-      method: 'PUT',
-      token,
-      body: JSON.stringify(data),
-    }),
-}
-
-// Brain Gym APIs
+// Brain Gym API
 export const brainGymAPI = {
-  getGames: (token: string) =>
-    apiRequest('/api/braingym/games', { token }),
-
-  submitScore: (token: string, data: any) =>
-    apiRequest('/api/braingym/score', {
+  async getGames() {
+    return fetchAPI<{
+      games: Array<{
+        id: string;
+        name: string;
+        description: string;
+        icon: string;
+      }>;
+    }>('/api/braingym/games');
+  },
+  
+  async submitScore(gameType: string, score: number) {
+    return fetchAPI<{
+      id: string;
+      game_type: string;
+      score: number;
+      timestamp: string;
+    }>('/api/braingym/score', {
       method: 'POST',
-      token,
-      body: JSON.stringify(data),
-    }),
+      body: JSON.stringify({ game_type: gameType, score }),
+    });
+  },
+  
+  async getScores(gameType?: string, limit: number = 50) {
+    let url = `/api/braingym/scores?limit=${limit}`;
+    if (gameType) url += `&game_type=${gameType}`;
+    
+    return fetchAPI<Array<{
+      id: string;
+      game_type: string;
+      score: number;
+      timestamp: string;
+    }>>(url);
+  },
+  
+  async getTrends(gameType: string, days: number = 30) {
+    return fetchAPI<{
+      game_type: string;
+      scores: Array<{ score: number; timestamp: string }>;
+      average_score: number;
+      best_score: number;
+      total_plays: number;
+      ai_insight: string;
+    }>(`/api/braingym/trends/${gameType}?days=${days}`);
+  },
+};
 
-  getScores: (token: string) =>
-    apiRequest('/api/braingym/score', { token }),
-}
-
-// Symphony APIs
-export const symphonyAPI = {
-  contribute: (token: string, data: any) =>
-    apiRequest('/api/symphony/contribute', {
+// Therapy API
+export const therapyAPI = {
+  async sendMessage(data: { session_id?: string; message: string; mode?: string }) {
+    return fetchAPI<{
+      session_id: string;
+      response: string;
+      topics: string[];
+      crisis_detected: boolean;
+      crisis_message?: string;
+    }>('/api/therapy/chat', {
       method: 'POST',
-      token,
       body: JSON.stringify(data),
-    }),
+    });
+  },
+  
+  async getHistory(limit: number = 5) {
+    return fetchAPI<Array<{
+      id: string;
+      mode: string;
+      started_at: string;
+      ended_at?: string;
+      topics: string[];
+      feeling_rating?: number;
+      key_insights?: string;
+      message_count: number;
+    }>>(`/api/therapy/history?limit=${limit}`);
+  },
+  
+  async closeSession(session_id: string, feeling_rating?: number) {
+    return fetchAPI<{
+      message: string;
+      reflection: string;
+    }>('/api/therapy/close', {
+      method: 'POST',
+      body: JSON.stringify({ session_id, feeling_rating }),
+    });
+  },
+  
+  async exportSession(session_id: string, format: 'txt' | 'pdf') {
+    const response = await fetch(`${API_URL}/api/therapy/export`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+      },
+      body: JSON.stringify({ session_id, format }),
+    });
+    
+    if (!response.ok) {
+      throw new APIError('Export failed', response.status);
+    }
+    
+    if (format === 'txt') {
+      const blob = await response.blob();
+      return blob;
+    }
+    
+    return await response.json();
+  },
+};
 
-  getAggregate: (token: string, timeframe?: string) =>
-    apiRequest(`/api/symphony/aggregate${timeframe ? `?timeframe=${timeframe}` : ''}`, { token }),
-}
+// Auth API
+export const authAPI = {
+  async login(email: string, password: string) {
+    const response = await fetchAPI<{
+      message: string;
+      user: {
+        id: string;
+        email: string;
+        name?: string;
+      };
+    }>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+      credentials: 'include', // Important: send cookies
+    });
+    
+    return response;
+  },
+  
+  async register(data: { name: string; username: string; email: string; password: string; user_type: string }) {
+    const response = await fetchAPI<{
+      message: string;
+      user: {
+        id: string;
+        email: string;
+        name: string;
+      };
+    }>('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(data),
+      credentials: 'include',
+    });
+    
+    return response;
+  },
+  
+  async logout() {
+    const response = await fetchAPI<{ message: string }>('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include',
+    });
+    
+    return response;
+  },
+  
+  async validate() {
+    return fetchAPI<{ valid: boolean; user: any }>('/api/auth/validate', {
+      credentials: 'include',
+    });
+  },
+};
+
+export { APIError };

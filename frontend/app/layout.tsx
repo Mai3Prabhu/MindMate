@@ -3,7 +3,8 @@ import type { Metadata } from 'next'
 import { Inter, Poppins } from 'next/font/google'
 import './globals.css'
 import { ThemeProvider } from 'next-themes'
-import { SessionProvider } from '@/components/SessionProvider'
+import { AuthProvider } from '@/components/AuthProvider'
+import AuthDebug from '@/components/AuthDebug'
 
 const inter = Inter({ 
   subsets: ['latin'],
@@ -32,11 +33,12 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.variable} ${poppins.variable} font-sans bg-light-bg dark:bg-dark-bg text-dark-text dark:text-light-text min-h-screen`}>
-        <SessionProvider>
+        <AuthProvider>
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
             {children}
+            <AuthDebug />
           </ThemeProvider>
-        </SessionProvider>
+        </AuthProvider>
       </body>
     </html>
   )

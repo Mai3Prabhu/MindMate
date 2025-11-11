@@ -5,10 +5,11 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { Brain, Mail, Lock, Chrome } from 'lucide-react'
-import { authAPI } from '@/lib/api'
+import { useAuth } from '@/components/AuthProvider'
 
 export default function LoginPage() {
   const router = useRouter()
+  const { login } = useAuth()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [formData, setFormData] = useState({
@@ -30,7 +31,7 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      await authAPI.login(formData.email, formData.password)
+      await login(formData.email, formData.password)
       router.push('/dashboard')
     } catch (err: any) {
       setError(err.message || 'Login failed. Please check your credentials.')
@@ -39,9 +40,14 @@ export default function LoginPage() {
     }
   }
 
-  const handleGoogleAuth = () => {
-    // TODO: Implement Google OAuth
-    console.log('Google OAuth not yet implemented')
+  const handleGoogleAuth = async () => {
+    try {
+      // Redirect to backend Google OAuth endpoint
+      window.location.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/auth/google`
+    } catch (error) {
+      console.error('Google OAuth error:', error)
+      setError('Failed to initiate Google sign-in')
+    }
   }
 
   return (

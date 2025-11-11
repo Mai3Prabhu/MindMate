@@ -152,6 +152,17 @@ CREATE TABLE IF NOT EXISTS content_progress (
     UNIQUE(user_id, content_id)
 );
 
+-- User settings table (theme, notifications, etc.)
+CREATE TABLE IF NOT EXISTS user_settings (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    theme TEXT CHECK (theme IN ('light', 'dark', 'system')) DEFAULT 'system',
+    notification_settings JSONB DEFAULT '{"email_notifications": true, "push_notifications": true, "therapy_reminders": true, "journal_reminders": true, "wellness_tips": true}'::jsonb,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(user_id)
+);
+
 -- Row Level Security (RLS) Policies
 -- Enable RLS on all tables
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
@@ -166,6 +177,7 @@ ALTER TABLE braingym_scores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE digital_wellness ENABLE ROW LEVEL SECURITY;
 ALTER TABLE symphony_posts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE content_progress ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_settings ENABLE ROW LEVEL SECURITY;
 
 -- Profiles: Users can read and update their own profile
 CREATE POLICY "Users can view own profile" ON profiles
@@ -184,6 +196,16 @@ CREATE POLICY "Users can insert own emotions" ON emotion_events
 CREATE POLICY "Users can delete own emotions" ON emotion_events
     FOR DELETE USING (auth.uid() = user_id);
 
+-- User settings: Users can manage their own settings
+CREATE POLICY "Users can view own settings" ON user_settings
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own settings" ON user_settings
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own settings" ON user_settings
+    FOR UPDATE USING (auth.uid() = user_id);
+
 -- Similar policies for other tables...
 -- (Add full RLS policies for production)
 
@@ -194,6 +216,7 @@ CREATE INDEX idx_journal_entries_user_id ON journal_entries(user_id);
 CREATE INDEX idx_therapy_sessions_user_id ON therapy_sessions(user_id);
 CREATE INDEX idx_meditation_sessions_user_id ON meditation_sessions(user_id);
 CREATE INDEX idx_symphony_posts_timestamp ON symphony_posts(timestamp DESC);
+CREATE INDEX idx_user_settings_user_id ON user_settings(user_id);
 
 -- Seed some content library items
 INSERT INTO content_items (title, url, category, type, duration_min, description) VALUES

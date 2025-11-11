@@ -1,28 +1,150 @@
+# IDE and Editor
 .vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Kiro
 .kiro/
+
+# Python
 **/__pycache__/
 *.pyc
 *.pyo
 *.pyd
-*.log
-.DS_Store
-Thumbs.db
+*.pdb
+*.egg
+*.egg-info/
+dist/
+build/
+*.so
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
 
-frontend/.next/
-frontend/node_modules/
-frontend/next-env.d.ts
+# Virtual Environments
+venv/
+env/
+ENV/
+backend/venv/
+backend/env/
+
+# Logs
+*.log
+logs/
+backend/logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment Variables
+.env
+.env.*
+!.env.example
 frontend/.env
 frontend/.env.*
-
+!frontend/.env.example
 backend/.env
 backend/.env.*
-backend/venv/
-backend/logs/
-backend/__pycache__/
-backend/routers/__pycache__/
-backend/services/__pycache__/
-backend/.pytest_cache/
-backend/.mypy_cache/
-backend/SUPABASE_EMAIL_FIX.md
-backend/QUICK_FIX_SUMMARY.md
-backend/TESTING_GUIDE.md
+!backend/.env.example
+
+# Frontend (Next.js)
+frontend/.next/
+frontend/out/
+frontend/node_modules/
+frontend/next-env.d.ts
+frontend/.vercel
+frontend/build/
+frontend/dist/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Testing
+coverage/
+.nyc_output/
+*.test.js.snap
+
+# Temporary Files
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+
+# OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Documentation (temporary/generated)
+*_FIX.md
+*_GUIDE.md
+*_SUMMARY.md
+*_STATUS.md
+*_ENABLED.md
+*_READY.md
+SUPABASE_EMAIL_FIX.md
+QUICK_FIX_SUMMARY.md
+TESTING_GUIDE.md
+AUTH_FIX_GUIDE.md
+DEV_MODE_ENABLED.md
+RESTART_BACKEND.md
+SIMPLE_AUTH_ENABLED.md
+THERAPY_CHAT_FIXED.md
+AUTHENTICATION_STATUS.md
+FIX_RLS_ISSUE.md
+FIX_REGISTRATION.md
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Misc
+.cache/
+.temp/
+.tmp/
+frontend/ACCESSIBILITY.md
+frontend/ACCESSIBILITY_QUICK_REFERENCE.md
+frontend/ACCESSIBILITY_TESTING.md
+frontend/PERFORMANCE.md
+frontend/components/README_NAVIGATION.md
+ACCESSIBILITY_ENHANCEMENTS.md
+ACCESSIBILITY_IMPLEMENTATION.md
+ACCESSIBILITY_REQUIREMENTS_CHECKLIST.md
+FINAL_SETUP_COMPLETE.md
+FIXES_APPLIED.md
+FRONTEND_FIXES.md
+SETTINGS_IMPLEMENTATION.md
+backend/PERFORMANCE.md
+backend/database/DISABLE_RLS.sql
+run.bat
+run.sh
+backend/services/README_GEMINI.md
+backend/routers/README_SETTINGS.md
+backend/routers/README_SIDE_PANELS.md
+backend/routers/README_SYMPHONY.md
+backend/database/FIX_PROFILES_FK.sql

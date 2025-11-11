@@ -63,9 +63,14 @@ export default function RegisterPage() {
     }
   }
 
-  const handleGoogleAuth = () => {
-    // TODO: Implement Google OAuth
-    console.log('Google OAuth not yet implemented')
+  const handleGoogleAuth = async () => {
+    try {
+      // Redirect to backend Google OAuth endpoint
+      window.location.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/auth/google`
+    } catch (error) {
+      console.error('Google OAuth error:', error)
+      setError('Failed to initiate Google sign-in')
+    }
   }
 
   return (

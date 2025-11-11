@@ -1,6 +1,8 @@
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Response, Request, Depends, Body, status
 from pydantic import BaseModel, EmailStr
 from services.supabase_client import get_supabase
+from supabase import Client
+from middleware import limiter, get_rate_limit
 import logging
 
 router = APIRouter()
@@ -18,7 +20,8 @@ class LoginRequest(BaseModel):
     password: str
 
 @router.post("/register")
-async def register(data: RegisterRequest):
+@limiter.limit(get_rate_limit("auth_register"))
+async def register(request: Request, data: RegisterRequest):
     """Register a new user with comprehensive error handling"""
     try:
         supabase = get_supabase()
@@ -90,32 +93,62 @@ async def register(data: RegisterRequest):
             )
 
 @router.post("/login")
-async def login(data: LoginRequest, response: Response):
-    """Login user with comprehensive error handling"""
+@limiter.limit(get_rate_limit("auth_login"))
+async def login(request: Request, data: LoginRequest, response: Response):
+    """Login user with simple session-based auth"""
     try:
         supabase = get_supabase()
         
-        # Attempt authentication
+        # Attempt authentication with Supabase
         auth_response = supabase.auth.sign_in_with_password({
             "email": data.email,
             "password": data.password
         })
         
-        # Check for successful session
-        if not auth_response.session:
+        if not auth_response.user:
             logger.warning(f"Login failed for email: {data.email}")
             raise HTTPException(
                 status_code=401,
                 detail="Invalid email or password"
             )
         
-        # Set secure cookie
+        # Get or create user profile
+        profile = supabase.table('profiles').select('*').eq('id', auth_response.user.id).execute()
+        
+        if not profile.data or len(profile.data) == 0:
+            # Profile doesn't exist, create it
+            logger.info(f"Creating profile for existing user: {auth_response.user.id}")
+            profile_data = {
+                'id': auth_response.user.id,
+                'name': auth_response.user.email.split('@')[0],  # Use email prefix as name
+                'email': auth_response.user.email,
+                'user_type': 'individual'
+            }
+            try:
+                supabase.table('profiles').insert(profile_data).execute()
+                user_name = profile_data['name']
+            except Exception as e:
+                logger.error(f"Failed to create profile: {str(e)}")
+                user_name = auth_response.user.email
+        else:
+            user_name = profile.data[0].get('name')
+        
+        user_data = {
+            'id': auth_response.user.id,
+            'email': auth_response.user.email,
+            'name': user_name
+        }
+        
+        # Create session (no tokens)
+        from middleware.simple_auth import create_session
+        session_id = create_session(user_data)
+        
+        # Set session cookie
         response.set_cookie(
-            key="access_token",
-            value=auth_response.session.access_token,
+            key="session_id",
+            value=session_id,
             httponly=True,
-            max_age=3600,
-            secure=True,
+            max_age=86400,  # 24 hours
             samesite="lax"
         )
         
@@ -123,55 +156,45 @@ async def login(data: LoginRequest, response: Response):
         
         return {
             "message": "Login successful",
-            "access_token": auth_response.session.access_token,
-            "user": {
-                "id": auth_response.user.id,
-                "email": auth_response.user.email,
-                "user_metadata": auth_response.user.user_metadata
-            }
+            "user": user_data
         }
         
     except HTTPException:
-        # Re-raise HTTP exceptions as-is
         raise
         
     except Exception as e:
-        # Log full error for debugging
         logger.error(f"Login error: {type(e).__name__}: {str(e)}", exc_info=True)
-        
-        # Classify error type
         error_str = str(e).lower()
         
-        if "email not confirmed" in error_str or "not confirmed" in error_str:
-            raise HTTPException(
-                status_code=403,
-                detail="Please verify your email address before logging in. Check your inbox for the confirmation link."
-            )
-        elif "invalid" in error_str or "credentials" in error_str or "password" in error_str:
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid email or password"
-            )
-        elif "network" in error_str or "connection" in error_str or "timeout" in error_str:
-            raise HTTPException(
-                status_code=503,
-                detail="Service temporarily unavailable. Please try again."
-            )
+        if "email not confirmed" in error_str:
+            raise HTTPException(status_code=403, detail="Please verify your email")
+        elif "invalid" in error_str or "password" in error_str:
+            raise HTTPException(status_code=401, detail="Invalid email or password")
         else:
-            # Generic server error
-            raise HTTPException(
-                status_code=500,
-                detail="An error occurred during login. Please try again."
-            )
+            raise HTTPException(status_code=500, detail="Login failed")
 
 @router.post("/logout")
-async def logout(response: Response):
+async def logout(request: Request, response: Response):
     """Logout user"""
-    response.delete_cookie("access_token")
+    session_id = request.cookies.get('session_id')
+    if session_id:
+        from middleware.simple_auth import destroy_session
+        destroy_session(session_id)
+    
+    response.delete_cookie("session_id")
     return {"message": "Logout successful"}
 
-@router.post("/refresh")
-async def refresh_token():
-    """Refresh access token"""
-    # TODO: Implement token refresh logic
-    return {"message": "Token refreshed"}
+@router.get("/validate")
+async def validate_session(request: Request):
+    """Check if user has valid session"""
+    try:
+        from middleware.simple_auth import get_optional_user
+        user = await get_optional_user(request)
+        
+        if user:
+            return {"valid": True, "user": user}
+        else:
+            return {"valid": False, "user": None}
+    except Exception as e:
+        logger.error(f"Session validation error: {str(e)}")
+        return {"valid": False, "user": None}

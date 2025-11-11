@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import Navbar from '@/components/Navbar'
-import { Smile, Frown, Meh, Zap, TrendingUp, AlertCircle } from 'lucide-react'
+import { useState } from 'react'
+import { motion } from 'framer-motion'
+import AppLayout from '@/components/AppLayout'
+import { Zap, TrendingUp, AlertCircle } from 'lucide-react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 
 export default function DashboardPage() {
@@ -35,10 +36,12 @@ export default function DashboardPage() {
   ]
 
   return (
-    <div className="min-h-screen bg-light-bg dark:bg-dark-bg">
-      <Navbar />
-      
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <AppLayout>
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="max-w-7xl mx-auto"
+      >
         <div className="mb-8">
           <h1 className="text-4xl font-heading font-bold mb-2">
             Welcome back! 👋
@@ -168,7 +171,7 @@ export default function DashboardPage() {
             </p>
           </div>
         </div>
-      </main>
-    </div>
+      </motion.div>
+    </AppLayout>
   )
 }
