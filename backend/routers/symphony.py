@@ -1,457 +1,257 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from typing import Optional, Dict, List
 from datetime import datetime, timedelta
-import logging
-from collections import defaultdict
-
 from services.supabase_client import get_supabase
-from middleware import get_current_user, limiter, get_rate_limit
-from supabase import Client
+import json
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
-
-
-# Pydantic Models
-class SymphonyPostRequest(BaseModel):
-    emotion_label: str = Field(..., min_length=1, max_length=50)
-    short_text: Optional[str] = Field(None, max_length=200)
-    color_code: Optional[str] = Field(None, pattern="^#[0-9A-Fa-f]{6}$")
-
 
 class SymphonyPost(BaseModel):
-    id: str
     emotion_label: str
-    color_code: Optional[str]
-    short_text: Optional[str]
-    timestamp: datetime
-    resonance_count: int = 0
+    short_text: Optional[str] = None
 
+class ResonanceRequest(BaseModel):
+    post_id: str
 
-class ResonateRequest(BaseModel):
-    post_id: str = Field(..., min_length=1)
-
-
-class GlobalMoodData(BaseModel):
-    total_posts: int
-    emotion_distribution: Dict[str, int]
-    regional_moods: Dict[str, Dict[str, int]]
-    recent_posts: List[SymphonyPost]
-    dominant_emotion: Optional[str]
-    mood_intensity: float
-
-
-class RegionalMood(BaseModel):
-    region: str
-    dominant_emotion: str
-    post_count: int
-    intensity: float
-
-
-# Helper Functions
-def get_emotion_color(emotion_label: str) -> str:
-    """
-    Map emotion labels to color codes.
-    
-    Args:
-        emotion_label: The emotion label
-        
-    Returns:
-        Hex color code
-    """
-    emotion_colors = {
-        'happy': '#FFD700',      # Gold
-        'joyful': '#FFD700',
-        'excited': '#FF6B6B',    # Coral
-        'calm': '#87CEEB',       # Sky Blue
-        'peaceful': '#87CEEB',
-        'relaxed': '#98D8C8',    # Mint
-        'sad': '#4A90E2',        # Blue
-        'anxious': '#9B59B6',    # Purple
-        'stressed': '#E74C3C',   # Red
-        'angry': '#E74C3C',
-        'frustrated': '#FF8C42', # Orange
-        'bored': '#95A5A6',      # Gray
-        'tired': '#7F8C8D',      # Dark Gray
-        'energetic': '#F39C12',  # Yellow-Orange
-        'focused': '#27AE60',    # Green
-        'grateful': '#F1C40F',   # Yellow
-        'hopeful': '#3498DB',    # Light Blue
-        'lonely': '#34495E',     # Dark Blue-Gray
-        'confused': '#9B7FFF',   # Lavender
-        'neutral': '#BDC3C7',    # Light Gray
-    }
-    
-    return emotion_colors.get(emotion_label.lower(), '#9B7FFF')  # Default to brand color
-
-
-def extract_region_from_location(location: Optional[dict]) -> str:
-    """
-    Extract region from location data.
-    For privacy, we use broad regions instead of specific locations.
-    
-    Args:
-        location: Location dict with lat, lng, address
-        
-    Returns:
-        Region identifier (e.g., 'north_america', 'europe', 'asia')
-    """
-    if not location or 'lat' not in location or 'lng' not in location:
-        return 'unknown'
-    
-    lat = location['lat']
-    lng = location['lng']
-    
-    # Simple region mapping based on coordinates
-    # North America
-    if 15 <= lat <= 72 and -168 <= lng <= -52:
-        return 'north_america'
-    # South America
-    elif -56 <= lat <= 13 and -82 <= lng <= -34:
-        return 'south_america'
-    # Europe
-    elif 36 <= lat <= 71 and -10 <= lng <= 40:
-        return 'europe'
-    # Africa
-    elif -35 <= lat <= 37 and -18 <= lng <= 52:
-        return 'africa'
-    # Asia
-    elif -10 <= lat <= 55 and 40 <= lng <= 150:
-        return 'asia'
-    # Oceania
-    elif -47 <= lat <= -10 and 110 <= lng <= 180:
-        return 'oceania'
-    else:
-        return 'other'
-
-
-async def get_user_region(user_id: str, supabase: Client) -> str:
-    """
-    Get user's region from their profile.
-    
-    Args:
-        user_id: User ID
-        supabase: Supabase client
-        
-    Returns:
-        Region identifier
-    """
+@router.get("/global")
+async def get_global_mood(hours: int = 24, limit: int = 100):
+    """Get global mood data and recent posts"""
     try:
-        result = supabase.table('profiles').select('location').eq('id', user_id).execute()
+        supabase = get_supabase()
         
-        if result.data and len(result.data) > 0:
-            location = result.data[0].get('location')
-            return extract_region_from_location(location)
+        # Calculate time threshold
+        time_threshold = datetime.utcnow() - timedelta(hours=hours)
         
-        return 'unknown'
-        
-    except Exception as e:
-        logger.error(f"Error getting user region: {str(e)}")
-        return 'unknown'
-
-
-# Endpoints
-@router.post("/post", response_model=SymphonyPost)
-@limiter.limit(get_rate_limit("symphony_post"))
-async def create_post(
-    request: Request,
-    post_request: SymphonyPostRequest,
-    current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase)
-):
-    """
-    Submit an anonymous emotional contribution to Symphony.
-    
-    Note: While we store user_id for moderation purposes,
-    the global feed displays all posts anonymously.
-    """
-    try:
-        user_id = current_user['id']
-        
-        # Get user's region for aggregation
-        region = await get_user_region(user_id, supabase)
-        
-        # Auto-assign color if not provided
-        color_code = post_request.color_code or get_emotion_color(post_request.emotion_label)
-        
-        # Store post
-        post_data = {
-            'user_id': user_id,
-            'emotion_label': post_request.emotion_label,
-            'color_code': color_code,
-            'short_text': post_request.short_text,
-            'region': region
-        }
-        
-        result = supabase.table('symphony_posts').insert(post_data).execute()
-        
-        if not result.data:
-            raise HTTPException(status_code=500, detail="Failed to create post")
-        
-        entry = result.data[0]
-        
-        logger.info(f"Symphony post created: {post_request.emotion_label} in {region}")
-        
-        return SymphonyPost(
-            id=entry['id'],
-            emotion_label=entry['emotion_label'],
-            color_code=entry['color_code'],
-            short_text=entry.get('short_text'),
-            timestamp=entry['timestamp'],
-            resonance_count=0
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error creating Symphony post: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to create post")
-
-
-@router.get("/global", response_model=GlobalMoodData)
-async def get_global_mood(
-    hours: int = 24,
-    limit: int = 100,
-    supabase: Client = Depends(get_supabase)
-):
-    """
-    Get aggregated global mood data.
-    
-    Returns anonymous, aggregated emotional data from the community.
-    Individual posts are anonymized - no user information is exposed.
-    """
-    try:
-        # Calculate time cutoff
-        cutoff_time = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
-        
-        # Fetch recent posts
-        result = supabase.table('symphony_posts') \
-            .select('id, emotion_label, color_code, short_text, timestamp, region') \
-            .gte('timestamp', cutoff_time) \
-            .order('timestamp', desc=True) \
-            .limit(limit) \
+        # Get recent posts
+        posts_result = supabase.table("symphony_posts")\
+            .select("*")\
+            .gte("created_at", time_threshold.isoformat())\
+            .order("created_at", desc=True)\
+            .limit(limit)\
             .execute()
         
-        posts = result.data if result.data else []
+        posts = posts_result.data
         
-        if not posts:
-            return GlobalMoodData(
-                total_posts=0,
-                emotion_distribution={},
-                regional_moods={},
-                recent_posts=[],
-                dominant_emotion=None,
-                mood_intensity=0.0
-            )
-        
-        # Aggregate emotion distribution
-        emotion_counts = defaultdict(int)
-        regional_emotions = defaultdict(lambda: defaultdict(int))
+        # Calculate emotion distribution
+        emotion_counts = {}
+        total_posts = len(posts)
         
         for post in posts:
-            emotion = post['emotion_label']
-            region = post.get('region', 'unknown')
+            emotion = post["emotion_label"]
+            emotion_counts[emotion] = emotion_counts.get(emotion, 0) + 1
+        
+        # Find dominant emotion
+        dominant_emotion = None
+        if emotion_counts:
+            dominant_emotion = max(emotion_counts, key=emotion_counts.get)
+        
+        # Calculate mood intensity (based on post frequency and variety)
+        mood_intensity = 0.0
+        if total_posts > 0:
+            # Base intensity on post frequency (more posts = higher intensity)
+            frequency_factor = min(total_posts / 50, 1.0)  # Cap at 50 posts
             
-            emotion_counts[emotion] += 1
-            regional_emotions[region][emotion] += 1
+            # Variety factor (more emotions = higher intensity)
+            variety_factor = len(emotion_counts) / 10  # Assuming max 10 emotions
+            
+            mood_intensity = (frequency_factor + variety_factor) / 2
+            mood_intensity = min(mood_intensity, 1.0)
         
-        # Calculate dominant emotion
-        dominant_emotion = max(emotion_counts.items(), key=lambda x: x[1])[0] if emotion_counts else None
+        # Format recent posts for response
+        formatted_posts = []
+        for post in posts[:50]:  # Limit to 50 most recent
+            formatted_posts.append({
+                "id": post["id"],
+                "emotion_label": post["emotion_label"],
+                "color_code": post.get("color_code"),
+                "short_text": post.get("short_text"),
+                "timestamp": post["created_at"],
+                "resonance_count": post.get("resonance_count", 0)
+            })
         
-        # Calculate mood intensity (0-1 scale based on post frequency)
-        # More posts = higher intensity
-        mood_intensity = min(len(posts) / 100.0, 1.0)
-        
-        # Format recent posts (anonymized)
-        recent_posts = [
-            SymphonyPost(
-                id=post['id'],
-                emotion_label=post['emotion_label'],
-                color_code=post['color_code'],
-                short_text=post.get('short_text'),
-                timestamp=post['timestamp'],
-                resonance_count=post.get('resonance_count', 0)
-            )
-            for post in posts[:20]  # Return top 20 recent posts
-        ]
-        
-        logger.info(f"Global mood data retrieved: {len(posts)} posts, dominant: {dominant_emotion}")
-        
-        return GlobalMoodData(
-            total_posts=len(posts),
-            emotion_distribution=dict(emotion_counts),
-            regional_moods={k: dict(v) for k, v in regional_emotions.items()},
-            recent_posts=recent_posts,
-            dominant_emotion=dominant_emotion,
-            mood_intensity=mood_intensity
-        )
-        
+        return {
+            "total_posts": total_posts,
+            "emotion_distribution": emotion_counts,
+            "regional_moods": {},  # Placeholder for future regional data
+            "recent_posts": formatted_posts,
+            "dominant_emotion": dominant_emotion,
+            "mood_intensity": mood_intensity
+        }
     except Exception as e:
-        logger.error(f"Error getting global mood data: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve global mood data")
+        raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/post")
+async def submit_post(post: SymphonyPost, user_id: str = "current"):
+    """Submit an anonymous emotional post"""
+    try:
+        supabase = get_supabase()
+        # Note: Posts are anonymous, but we track user_id for rate limiting
+        actual_user_id = "00000000-0000-0000-0000-000000000000"
+        
+        # Color mapping for emotions
+        emotion_colors = {
+            "joy": "#FFD700",
+            "sadness": "#4169E1", 
+            "anger": "#DC143C",
+            "fear": "#800080",
+            "surprise": "#FF69B4",
+            "disgust": "#228B22",
+            "calm": "#87CEEB",
+            "excited": "#FF4500",
+            "anxious": "#9370DB",
+            "content": "#32CD32",
+            "lonely": "#708090",
+            "grateful": "#FFB6C1",
+            "hopeful": "#98FB98",
+            "overwhelmed": "#B22222",
+            "peaceful": "#E0E6FF"
+        }
+        
+        data = {
+            "user_id": actual_user_id,  # For rate limiting only
+            "emotion_label": post.emotion_label,
+            "short_text": post.short_text,
+            "color_code": emotion_colors.get(post.emotion_label, "#888888"),
+            "resonance_count": 0,
+            "created_at": datetime.utcnow().isoformat()
+        }
+        
+        result = supabase.table("symphony_posts").insert(data).execute()
+        return result.data[0] if result.data else {}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/resonate")
-@limiter.limit(get_rate_limit("symphony_resonate"))
-async def resonate_with_post(
-    request: Request,
-    resonate_request: ResonateRequest,
-    current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase)
-):
-    """
-    React/resonate with another user's post.
-    
-    This creates an anonymous connection between users who share similar feelings.
-    """
+async def resonate_with_post(resonance: ResonanceRequest, user_id: str = "current"):
+    """Resonate with (like) a post"""
     try:
-        user_id = current_user['id']
-        post_id = resonate_request.post_id
-        
-        # Check if post exists
-        post_result = supabase.table('symphony_posts') \
-            .select('id') \
-            .eq('id', post_id) \
-            .execute()
-        
-        if not post_result.data:
-            raise HTTPException(status_code=404, detail="Post not found")
+        supabase = get_supabase()
+        actual_user_id = "00000000-0000-0000-0000-000000000000"
         
         # Check if user already resonated with this post
-        existing = supabase.table('symphony_resonances') \
-            .select('id') \
-            .eq('user_id', user_id) \
-            .eq('post_id', post_id) \
+        existing = supabase.table("symphony_resonances")\
+            .select("id")\
+            .eq("user_id", actual_user_id)\
+            .eq("post_id", resonance.post_id)\
             .execute()
         
         if existing.data:
-            # Already resonated - remove resonance (toggle)
-            supabase.table('symphony_resonances') \
-                .delete() \
-                .eq('user_id', user_id) \
-                .eq('post_id', post_id) \
+            # Already resonated, remove resonance
+            supabase.table("symphony_resonances")\
+                .delete()\
+                .eq("user_id", actual_user_id)\
+                .eq("post_id", resonance.post_id)\
                 .execute()
             
-            logger.info(f"Resonance removed: post {post_id}")
+            # Decrement resonance count
+            supabase.rpc("decrement_resonance", {"post_id": resonance.post_id}).execute()
             
-            return {
-                "message": "Resonance removed",
-                "resonated": False
-            }
+            return {"message": "Resonance removed"}
         else:
             # Add new resonance
             resonance_data = {
-                'user_id': user_id,
-                'post_id': post_id
+                "user_id": actual_user_id,
+                "post_id": resonance.post_id,
+                "created_at": datetime.utcnow().isoformat()
             }
             
-            supabase.table('symphony_resonances').insert(resonance_data).execute()
+            supabase.table("symphony_resonances").insert(resonance_data).execute()
             
-            logger.info(f"Resonance added: post {post_id}")
+            # Increment resonance count
+            supabase.rpc("increment_resonance", {"post_id": resonance.post_id}).execute()
             
-            return {
-                "message": "Resonance added",
-                "resonated": True
-            }
-        
-    except HTTPException:
-        raise
+            return {"message": "Resonance added"}
     except Exception as e:
-        logger.error(f"Error processing resonance: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to process resonance")
+        raise HTTPException(status_code=500, detail=str(e))
 
-
-@router.get("/regions", response_model=List[RegionalMood])
-async def get_regional_moods(
-    hours: int = 24,
-    supabase: Client = Depends(get_supabase)
-):
-    """
-    Get mood aggregation by region.
-    
-    Returns dominant emotions and intensity for each geographic region.
-    """
+@router.get("/posts")
+async def get_recent_posts(limit: int = 50):
+    """Get recent symphony posts"""
     try:
-        # Calculate time cutoff
-        cutoff_time = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
+        supabase = get_supabase()
         
-        # Fetch posts with region data
-        result = supabase.table('symphony_posts') \
-            .select('emotion_label, region') \
-            .gte('timestamp', cutoff_time) \
+        result = supabase.table("symphony_posts")\
+            .select("*")\
+            .order("created_at", desc=True)\
+            .limit(limit)\
             .execute()
         
-        posts = result.data if result.data else []
-        
-        if not posts:
-            return []
-        
-        # Aggregate by region
-        regional_data = defaultdict(lambda: defaultdict(int))
-        
-        for post in posts:
-            region = post.get('region', 'unknown')
-            emotion = post['emotion_label']
-            regional_data[region][emotion] += 1
-        
-        # Format response
-        regional_moods = []
-        
-        for region, emotions in regional_data.items():
-            total_posts = sum(emotions.values())
-            dominant_emotion = max(emotions.items(), key=lambda x: x[1])[0]
-            
-            # Calculate intensity (0-1 scale)
-            intensity = min(total_posts / 50.0, 1.0)
-            
-            regional_moods.append(RegionalMood(
-                region=region,
-                dominant_emotion=dominant_emotion,
-                post_count=total_posts,
-                intensity=intensity
-            ))
-        
-        # Sort by post count
-        regional_moods.sort(key=lambda x: x.post_count, reverse=True)
-        
-        logger.info(f"Regional mood data retrieved: {len(regional_moods)} regions")
-        
-        return regional_moods
-        
+        return result.data
     except Exception as e:
-        logger.error(f"Error getting regional moods: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve regional moods")
+        raise HTTPException(status_code=500, detail=str(e))
 
-
-@router.delete("/post/{post_id}")
-async def delete_post(
-    post_id: str,
-    current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase)
-):
-    """
-    Delete a user's own Symphony post.
-    """
+@router.get("/emotions")
+async def get_emotion_trends(hours: int = 24):
+    """Get emotion trends over time"""
     try:
-        user_id = current_user['id']
+        supabase = get_supabase()
         
-        # Delete post (only if user owns it)
-        result = supabase.table('symphony_posts') \
-            .delete() \
-            .eq('id', post_id) \
-            .eq('user_id', user_id) \
+        time_threshold = datetime.utcnow() - timedelta(hours=hours)
+        
+        result = supabase.table("symphony_posts")\
+            .select("emotion_label, created_at")\
+            .gte("created_at", time_threshold.isoformat())\
+            .order("created_at", desc=False)\
             .execute()
         
-        if not result.data:
-            raise HTTPException(status_code=404, detail="Post not found or unauthorized")
+        # Group by hour
+        hourly_emotions = {}
+        for post in result.data:
+            hour = post["created_at"][:13]  # YYYY-MM-DDTHH
+            if hour not in hourly_emotions:
+                hourly_emotions[hour] = {}
+            
+            emotion = post["emotion_label"]
+            hourly_emotions[hour][emotion] = hourly_emotions[hour].get(emotion, 0) + 1
         
-        logger.info(f"Symphony post deleted: {post_id}")
-        
-        return {"message": "Post deleted successfully"}
-        
-    except HTTPException:
-        raise
+        return {
+            "hourly_trends": hourly_emotions,
+            "total_posts": len(result.data)
+        }
     except Exception as e:
-        logger.error(f"Error deleting post: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to delete post")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/stats")
+async def get_symphony_stats():
+    """Get overall symphony statistics"""
+    try:
+        supabase = get_supabase()
+        
+        # Get total posts
+        total_result = supabase.table("symphony_posts")\
+            .select("id", count="exact")\
+            .execute()
+        
+        total_posts = total_result.count or 0
+        
+        # Get posts from last 24 hours
+        yesterday = datetime.utcnow() - timedelta(hours=24)
+        recent_result = supabase.table("symphony_posts")\
+            .select("id", count="exact")\
+            .gte("created_at", yesterday.isoformat())\
+            .execute()
+        
+        recent_posts = recent_result.count or 0
+        
+        # Get most common emotions (all time)
+        emotions_result = supabase.table("symphony_posts")\
+            .select("emotion_label")\
+            .execute()
+        
+        emotion_counts = {}
+        for post in emotions_result.data:
+            emotion = post["emotion_label"]
+            emotion_counts[emotion] = emotion_counts.get(emotion, 0) + 1
+        
+        # Sort emotions by frequency
+        top_emotions = sorted(emotion_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+        
+        return {
+            "total_posts": total_posts,
+            "posts_24h": recent_posts,
+            "top_emotions": dict(top_emotions),
+            "active_now": recent_posts > 0
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

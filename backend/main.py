@@ -9,7 +9,7 @@ from pathlib import Path
 import sys
 
 from routers import auth, users, journal, emotion, therapy, feelhear, meditation
-from routers import content, wellness, braingym, symphony, gemini_routes, feelflow
+from routers import content, wellness, braingym, symphony, gemini_routes, feelflow, focus, library
 from config import get_settings
 from middleware import (
     SecurityHeadersMiddleware,
@@ -115,6 +115,8 @@ app.include_router(braingym.router, prefix="/api/braingym", tags=["Brain Gym"])
 app.include_router(symphony.router, prefix="/api/symphony", tags=["Symphony"])
 app.include_router(gemini_routes.router, prefix="/api/gemini", tags=["Gemini AI"])
 app.include_router(feelflow.router, prefix="/api/feelflow", tags=["FeelFlow"])
+app.include_router(focus.router, prefix="/api/focus", tags=["Focus Mode"])
+app.include_router(library.router, prefix="/api/library", tags=["Content Library"])
 
 @app.get("/")
 async def root():
