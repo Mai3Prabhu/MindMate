@@ -28,12 +28,9 @@ interface NavLink {
 const navLinks: NavLink[] = [
   { href: '/home', label: 'Home', icon: Home },
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/therapy', label: 'Therapy', icon: MessageCircle },
+  { href: '/mates', label: 'Mates', icon: MessageCircle },
   { href: '/journal', label: 'Journal', icon: BookOpen },
-  { href: '/feelhear', label: 'FeelHear', icon: Mic },
-  { href: '/feelflow', label: 'FeelFlow', icon: MessageSquare },
   { href: '/braingym', label: 'Brain Gym', icon: Brain },
-  { href: '/symphony', label: 'Symphony', icon: Music },
   { href: '/library', label: 'Library', icon: Library },
   { href: '/wellness', label: 'Wellness', icon: Activity },
 ]

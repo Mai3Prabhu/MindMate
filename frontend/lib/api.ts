@@ -1,405 +1,502 @@
-/**
- * API Client for MindMate
- * Handles all API requests with authentication
- */
+// API utility functions for the application
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
-class APIError extends Error {
-  constructor(message: string, public statusCode: number, public details?: any) {
-    super(message);
-    this.name = 'APIError';
-  }
-}
-
-async function fetchAPI<T>(
+// Generic API request function
+async function apiRequest<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-    ...options.headers,
-  };
+  const url = `${API_BASE_URL}${endpoint}`
   
-  try {
-    const response = await fetch(`${API_URL}${endpoint}`, {
-      ...options,
-      headers,
-      credentials: 'include', // Always send cookies
-    });
-    
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: 'Request failed' }));
-      throw new APIError(
-        error.message || error.detail || 'Request failed',
-        response.status,
-        error
-      );
-    }
-    
-    // Handle empty responses
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      return await response.json();
-    }
-    
-    return response as any;
-  } catch (error) {
-    if (error instanceof APIError) {
-      throw error;
-    }
-    throw new APIError('Network error. Please check your connection.', 0);
+  const config: RequestInit = {
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+    ...options,
   }
+
+  const response = await fetch(url, config)
+  
+  if (!response.ok) {
+    throw new Error(`API Error: ${response.status} ${response.statusText}`)
+  }
+
+  return response.json()
+}
+
+// Auth API
+export const authAPI = {
+  async login(email: string, password: string): Promise<any> {
+    return apiRequest('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    })
+  },
+
+  async register(data: {
+    email: string
+    password: string
+    name?: string
+  }): Promise<any> {
+    return apiRequest('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async logout(): Promise<any> {
+    return apiRequest('/api/auth/logout', {
+      method: 'POST',
+    })
+  },
+
+  async validate(): Promise<any> {
+    return apiRequest('/api/auth/validate')
+  },
+
+  async getCurrentUser(): Promise<any> {
+    return apiRequest('/api/users/me')
+  },
 }
 
 // Journal API
 export const journalAPI = {
-  async checkPIN() {
-    return fetchAPI<{ has_pin: boolean }>('/api/journal/check-pin');
+  async getEntries(limit = 10): Promise<any[]> {
+    return apiRequest(`/api/journal/entries?limit=${limit}`)
   },
-  
-  async setPIN(pin: string) {
-    return fetchAPI<{ message: string }>('/api/journal/set-pin', {
+
+  async createEntry(entry: {
+    content: string
+    mood_tag?: string
+    theme: string
+  }): Promise<any> {
+    return apiRequest('/api/journal/entries', {
       method: 'POST',
-      body: JSON.stringify({ pin }),
-    });
+      body: JSON.stringify(entry),
+    })
   },
-  
-  async validatePIN(pinHash: string) {
-    return fetchAPI<{ valid: boolean; pin_set: boolean }>('/api/journal/validate-pin', {
-      method: 'POST',
-      body: JSON.stringify({ pin_hash: pinHash }),
-    });
-  },
-  
-  async getEntries(limit: number = 50, offset: number = 0) {
-    return fetchAPI<Array<{
-      id: string;
-      content: string;
-      mood_tag?: string;
-      theme: string;
-      timestamp: string;
-    }>>(`/api/journal?limit=${limit}&offset=${offset}`);
-  },
-  
-  async createEntry(data: { content: string; mood_tag?: string; theme?: string }) {
-    return fetchAPI<{
-      id: string;
-      content: string;
-      mood_tag?: string;
-      theme: string;
-      timestamp: string;
-    }>('/api/journal', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  },
-  
-  async updateEntry(id: string, data: { content?: string; mood_tag?: string; theme?: string }) {
-    return fetchAPI<{
-      id: string;
-      content: string;
-      mood_tag?: string;
-      theme: string;
-      timestamp: string;
-    }>(`/api/journal/${id}`, {
+
+  async updateEntry(id: string, entry: {
+    content: string
+    mood_tag?: string
+    theme: string
+  }): Promise<any> {
+    return apiRequest(`/api/journal/entries/${id}`, {
       method: 'PUT',
-      body: JSON.stringify(data),
-    });
+      body: JSON.stringify(entry),
+    })
   },
-  
-  async deleteEntry(id: string) {
-    return fetchAPI<{ message: string }>(`/api/journal/${id}`, {
+
+  async deleteEntry(id: string): Promise<any> {
+    return apiRequest(`/api/journal/entries/${id}`, {
       method: 'DELETE',
-    });
+    })
   },
-  
-  async getStreaks() {
-    return fetchAPI<{
-      current_streak: number;
-      longest_streak: number;
-      total_entries: number;
-      entries_by_date: Record<string, number>;
-    }>('/api/journal/streaks');
-  },
-};
 
-// FeelHear API
-export const feelHearAPI = {
-  async analyzeAudio(audioBase64: string, durationSeconds: number) {
-    return fetchAPI<{
-      session_id: string;
-      emotion: string;
-      intensity: number;
-      secondary_emotions: string[];
-      message: string;
-      transcription?: string;
-    }>('/api/feelhear/analyze', {
-      method: 'POST',
-      body: JSON.stringify({
-        audio_base64: audioBase64,
-        duration_seconds: durationSeconds,
-      }),
-    });
+  async getCalendar(year: number, month: number): Promise<any[]> {
+    return apiRequest(`/api/journal/calendar?year=${year}&month=${month}`)
   },
-  
-  async saveSession(sessionId: string) {
-    return fetchAPI<{ message: string }>('/api/feelhear/save', {
-      method: 'POST',
-      body: JSON.stringify({ session_id: sessionId }),
-    });
-  },
-  
-  async getHistory(limit: number = 10, savedOnly: boolean = false) {
-    return fetchAPI<Array<{
-      id: string;
-      analyzed_emotion: string;
-      intensity: number;
-      summary: string;
-      timestamp: string;
-      saved: boolean;
-    }>>(`/api/feelhear/history?limit=${limit}&saved_only=${savedOnly}`);
-  },
-  
-  async deleteSession(sessionId: string) {
-    return fetchAPI<{ message: string }>(`/api/feelhear/${sessionId}`, {
-      method: 'DELETE',
-    });
-  },
-};
 
-// FeelFlow API
-export const feelFlowAPI = {
-  async logMood(data: { label: string; intensity: number; snippet?: string }) {
-    return fetchAPI<{
-      id: string;
-      label: string;
-      intensity: number;
-      source: string;
-      timestamp: string;
-      snippet?: string;
-    }>('/api/feelflow/mood', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+  async getStreak(): Promise<any> {
+    return apiRequest('/api/journal/streak')
   },
-  
-  async getHistory(days: number = 30, startDate?: string, endDate?: string) {
-    let url = `/api/feelflow/history?days=${days}`;
-    if (startDate) url += `&start_date=${startDate}`;
-    if (endDate) url += `&end_date=${endDate}`;
-    
-    return fetchAPI<Array<{
-      id: string;
-      label: string;
-      intensity: number;
-      source: string;
-      timestamp: string;
-      snippet?: string;
-    }>>(url);
-  },
-  
-  async getInsights(days: number = 30) {
-    return fetchAPI<{
-      insights: string;
-      dominant_emotions: Array<{ emotion: string; count: number; avg_intensity: number }>;
-      patterns: string[];
-      suggestions: string[];
-    }>('/api/feelflow/insights', {
-      method: 'POST',
-      body: JSON.stringify({ days }),
-    });
-  },
-  
-  async exportHistory(format: 'txt' | 'json', days: number = 30) {
-    const response = await fetch(`${API_URL}/api/feelflow/export`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-      },
-      body: JSON.stringify({ format, days }),
-    });
-    
-    if (!response.ok) {
-      throw new APIError('Export failed', response.status);
-    }
-    
-    if (format === 'txt') {
-      const blob = await response.blob();
-      return blob;
-    }
-    
-    return await response.json();
-  },
-  
-  async deleteMood(moodId: string) {
-    return fetchAPI<{ message: string }>(`/api/feelflow/${moodId}`, {
-      method: 'DELETE',
-    });
-  },
-};
+}
 
-// Brain Gym API
-export const brainGymAPI = {
-  async getGames() {
-    return fetchAPI<{
-      games: Array<{
-        id: string;
-        name: string;
-        description: string;
-        icon: string;
-      }>;
-    }>('/api/braingym/games');
+// Meditation API
+export const meditationAPI = {
+  async getSessions(limit = 10) {
+    return apiRequest(`/api/meditation/sessions?limit=${limit}`)
   },
-  
-  async submitScore(gameType: string, score: number) {
-    return fetchAPI<{
-      id: string;
-      game_type: string;
-      score: number;
-      timestamp: string;
-    }>('/api/braingym/score', {
-      method: 'POST',
-      body: JSON.stringify({ game_type: gameType, score }),
-    });
-  },
-  
-  async getScores(gameType?: string, limit: number = 50) {
-    let url = `/api/braingym/scores?limit=${limit}`;
-    if (gameType) url += `&game_type=${gameType}`;
-    
-    return fetchAPI<Array<{
-      id: string;
-      game_type: string;
-      score: number;
-      timestamp: string;
-    }>>(url);
-  },
-  
-  async getTrends(gameType: string, days: number = 30) {
-    return fetchAPI<{
-      game_type: string;
-      scores: Array<{ score: number; timestamp: string }>;
-      average_score: number;
-      best_score: number;
-      total_plays: number;
-      ai_insight: string;
-    }>(`/api/braingym/trends/${gameType}?days=${days}`);
-  },
-};
 
-// Therapy API
+  async createSession(session: {
+    theme: string
+    voice_type: string
+    duration_minutes: number
+    time_of_day: string
+    before_calmness?: number
+  }) {
+    return apiRequest('/api/meditation/sessions', {
+      method: 'POST',
+      body: JSON.stringify(session),
+    })
+  },
+
+  async updateSession(id: string, update: {
+    after_calmness: number
+  }) {
+    return apiRequest(`/api/meditation/sessions/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(update),
+    })
+  },
+
+  async getStats(days = 30) {
+    return apiRequest(`/api/meditation/stats?days=${days}`)
+  },
+}
+
+// Focus API
+export const focusAPI = {
+  async createSession(session: {
+    duration_minutes: number
+    environment: string
+    tree_stage?: string
+    before_focus_level?: number
+  }) {
+    return apiRequest('/api/focus/sessions', {
+      method: 'POST',
+      body: JSON.stringify(session),
+    })
+  },
+
+  async completeSession(id: string, completion: {
+    after_focus_level: number
+    tree_stage: string
+    completed: boolean
+  }) {
+    return apiRequest(`/api/focus/sessions/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(completion),
+    })
+  },
+
+  async getSessions(limit = 10) {
+    return apiRequest(`/api/focus/sessions?limit=${limit}`)
+  },
+
+  async getStreak() {
+    return apiRequest('/api/focus/streak')
+  },
+
+  async getStats() {
+    return apiRequest('/api/focus/stats')
+  },
+}
+
+// Library API
+export const libraryAPI = {
+  async getContent(params: {
+    category?: string
+    type?: string
+    search?: string
+    featured?: boolean
+    limit?: number
+  } = {}) {
+    const searchParams = new URLSearchParams()
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined) {
+        searchParams.append(key, String(value))
+      }
+    })
+    
+    return apiRequest(`/api/library/content?${searchParams}`)
+  },
+
+  async getContentItem(id: string) {
+    return apiRequest(`/api/library/content/${id}`)
+  },
+
+  async updateInteraction(interaction: {
+    content_id: string
+    liked?: boolean
+    saved?: boolean
+    viewed?: boolean
+    completed?: boolean
+  }) {
+    return apiRequest('/api/library/interactions', {
+      method: 'POST',
+      body: JSON.stringify(interaction),
+    })
+  },
+
+  async getInteractions() {
+    return apiRequest('/api/library/interactions')
+  },
+
+  async getSavedContent() {
+    return apiRequest('/api/library/saved')
+  },
+
+  async getFeaturedContent(limit = 3) {
+    return apiRequest(`/api/library/featured?limit=${limit}`)
+  },
+}
+
+// Symphony API
+export const symphonyAPI = {
+  async getGlobalMood(hours = 24, limit = 100) {
+    return apiRequest(`/api/symphony/global?hours=${hours}&limit=${limit}`)
+  },
+
+  async submitPost(post: {
+    emotion_label: string
+    short_text?: string
+  }) {
+    return apiRequest('/api/symphony/post', {
+      method: 'POST',
+      body: JSON.stringify(post),
+    })
+  },
+
+  async resonate(postId: string) {
+    return apiRequest('/api/symphony/resonate', {
+      method: 'POST',
+      body: JSON.stringify({ post_id: postId }),
+    })
+  },
+
+  async getRecentPosts(limit = 50) {
+    return apiRequest(`/api/symphony/posts?limit=${limit}`)
+  },
+}
+
+// Therapy API - Updated to match backend endpoints
 export const therapyAPI = {
-  async sendMessage(data: { session_id?: string; message: string; mode?: string }) {
-    return fetchAPI<{
-      session_id: string;
-      response: string;
-      topics: string[];
-      crisis_detected: boolean;
-      crisis_message?: string;
-    }>('/api/therapy/chat', {
+  async sendMessage(data: {
+    session_id?: string
+    message: string
+    mode?: string
+  }): Promise<any> {
+    return apiRequest('/api/therapy/chat', {
       method: 'POST',
       body: JSON.stringify(data),
-    });
+    })
   },
-  
-  async getHistory(limit: number = 5) {
-    return fetchAPI<Array<{
-      id: string;
-      mode: string;
-      started_at: string;
-      ended_at?: string;
-      topics: string[];
-      feeling_rating?: number;
-      key_insights?: string;
-      message_count: number;
-    }>>(`/api/therapy/history?limit=${limit}`);
-  },
-  
-  async closeSession(session_id: string, feeling_rating?: number) {
-    return fetchAPI<{
-      message: string;
-      reflection: string;
-    }>('/api/therapy/close', {
-      method: 'POST',
-      body: JSON.stringify({ session_id, feeling_rating }),
-    });
-  },
-  
-  async exportSession(session_id: string, format: 'txt' | 'pdf') {
-    const response = await fetch(`${API_URL}/api/therapy/export`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-      },
-      body: JSON.stringify({ session_id, format }),
-    });
-    
-    if (!response.ok) {
-      throw new APIError('Export failed', response.status);
-    }
-    
-    if (format === 'txt') {
-      const blob = await response.blob();
-      return blob;
-    }
-    
-    return await response.json();
-  },
-};
 
-// Auth API
-export const authAPI = {
-  async login(email: string, password: string) {
-    const response = await fetchAPI<{
-      message: string;
-      user: {
-        id: string;
-        email: string;
-        name?: string;
-      };
-    }>('/api/auth/login', {
+  async closeSession(sessionId: string, feelingRating?: number): Promise<any> {
+    return apiRequest('/api/therapy/close', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
-      credentials: 'include', // Important: send cookies
-    });
-    
-    return response;
+      body: JSON.stringify({ 
+        session_id: sessionId,
+        feeling_rating: feelingRating 
+      }),
+    })
   },
-  
-  async register(data: { name: string; username: string; email: string; password: string; user_type: string }) {
-    const response = await fetchAPI<{
-      message: string;
-      user: {
-        id: string;
-        email: string;
-        name: string;
-      };
-    }>('/api/auth/register', {
-      method: 'POST',
-      body: JSON.stringify(data),
-      credentials: 'include',
-    });
-    
-    return response;
-  },
-  
-  async logout() {
-    const response = await fetchAPI<{ message: string }>('/api/auth/logout', {
-      method: 'POST',
-      credentials: 'include',
-    });
-    
-    return response;
-  },
-  
-  async validate() {
-    return fetchAPI<{ valid: boolean; user: any }>('/api/auth/validate', {
-      credentials: 'include',
-    });
-  },
-};
 
-export { APIError };
+  async getSessionHistory(limit = 5): Promise<any> {
+    return apiRequest(`/api/therapy/history?limit=${limit}`)
+  },
+
+  async exportSession(sessionId: string, format: 'txt' | 'pdf' = 'txt'): Promise<any> {
+    return apiRequest('/api/therapy/export', {
+      method: 'POST',
+      body: JSON.stringify({ 
+        session_id: sessionId,
+        format 
+      }),
+    })
+  },
+}
+
+// FeelHear API (placeholder for future implementation)
+export const feelHearAPI = {
+  async analyzeVoice(audioBlob: Blob) {
+    const formData = new FormData()
+    formData.append('audio', audioBlob, 'voice.wav')
+    
+    return apiRequest('/api/feelhear/analyze', {
+      method: 'POST',
+      body: formData,
+      headers: {}, // Remove Content-Type to let browser set it for FormData
+    })
+  },
+
+  async getAnalysisHistory(limit = 10) {
+    return apiRequest(`/api/feelhear/history?limit=${limit}`)
+  },
+}
+
+// FeelFlow API (placeholder for future implementation)
+export const feelFlowAPI = {
+  async getEmotionalTrends(days = 30) {
+    return apiRequest(`/api/feelflow/trends?days=${days}`)
+  },
+
+  async logEmotion(emotion: {
+    emotion_label: string
+    intensity: number
+    context?: string
+  }) {
+    return apiRequest('/api/feelflow/log', {
+      method: 'POST',
+      body: JSON.stringify(emotion),
+    })
+  },
+
+  async getEmotionHistory(limit = 100) {
+    return apiRequest(`/api/feelflow/history?limit=${limit}`)
+  },
+}
+
+// Wellness API
+export const wellnessAPI = {
+  // Breathing Sessions
+  async createBreathingSession(session: {
+    pattern: string
+    duration_minutes: number
+    before_calmness: number
+    after_calmness?: number
+  }) {
+    return apiRequest('/api/wellness/breath-sessions', {
+      method: 'POST',
+      body: JSON.stringify(session),
+    })
+  },
+
+  async logBreathingSession(session: {
+    type: string
+    duration_minutes: number
+    cycles_completed?: number
+    timestamp: string
+  }) {
+    return apiRequest('/api/wellness/breathing-log', {
+      method: 'POST',
+      body: JSON.stringify(session),
+    })
+  },
+
+  async getBreathingSessions(limit = 10) {
+    return apiRequest(`/api/wellness/breath-sessions?limit=${limit}`)
+  },
+
+  async getBreathingLogs(limit = 10) {
+    return apiRequest(`/api/wellness/breathing-log?limit=${limit}`)
+  },
+
+  async getBreathingStats() {
+    return apiRequest('/api/wellness/breathing/stats')
+  },
+
+  // MoveFlow Activities
+  async logMoveFlowActivity(activity: {
+    activity_type: string
+    duration_minutes: number
+    intensity: string
+    calories: number
+  }) {
+    return apiRequest('/api/wellness/moveflow-log', {
+      method: 'POST',
+      body: JSON.stringify(activity),
+    })
+  },
+
+  async getMoveFlowActivities(limit = 10) {
+    return apiRequest(`/api/wellness/moveflow-log?limit=${limit}`)
+  },
+
+  // Activities (Legacy)
+  async logActivity(activity: {
+    activity_type: string
+    duration_minutes: number
+    intensity: string
+    calories: number
+  }) {
+    return apiRequest('/api/wellness/activity', {
+      method: 'POST',
+      body: JSON.stringify(activity),
+    })
+  },
+
+  async getActivities(limit = 10) {
+    return apiRequest(`/api/wellness/activity/sessions?limit=${limit}`)
+  },
+
+  async getActivityStats() {
+    return apiRequest('/api/wellness/activity/stats')
+  },
+
+  // Meditation
+  async logMeditationSession(session: {
+    duration_minutes: number
+    before_calmness: number
+    after_calmness?: number
+    meditation_type?: string
+  }) {
+    return apiRequest('/api/wellness/meditation-log', {
+      method: 'POST',
+      body: JSON.stringify(session),
+    })
+  },
+
+  async getMeditationSessions(limit = 10) {
+    return apiRequest(`/api/wellness/meditation-log?limit=${limit}`)
+  },
+
+  // Journal
+  async logJournalPrompt(journal: {
+    prompt: string
+    response: string
+    mood_before?: number
+    mood_after?: number
+  }) {
+    return apiRequest('/api/wellness/journal-prompt-log', {
+      method: 'POST',
+      body: JSON.stringify(journal),
+    })
+  },
+
+  async getJournalPrompts(limit = 10) {
+    return apiRequest(`/api/wellness/journal-prompt-log?limit=${limit}`)
+  },
+
+  // Goals
+  async createGoal(goal: {
+    title: string
+    target: number
+    unit: string
+    category: string
+  }) {
+    return apiRequest('/api/wellness/goals', {
+      method: 'POST',
+      body: JSON.stringify(goal),
+    })
+  },
+
+  async getGoals() {
+    return apiRequest('/api/wellness/goals')
+  },
+
+  async updateGoal(goalId: string, update: { current: number }) {
+    return apiRequest(`/api/wellness/goals/${goalId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(update),
+    })
+  },
+
+  async deleteGoal(goalId: string) {
+    return apiRequest(`/api/wellness/goals/${goalId}`, {
+      method: 'DELETE',
+    })
+  },
+
+  // Badges
+  async getBadges() {
+    return apiRequest('/api/wellness/badges')
+  },
+
+  // Overall Stats
+  async getWellnessStats() {
+    return apiRequest('/api/wellness/stats')
+  },
+
+  // Daily Tip
+  async getDailyTip() {
+    return apiRequest('/api/wellness/daily-tip')
+  },
+}
+
+export default {
+  authAPI,
+  journalAPI,
+  meditationAPI,
+  focusAPI,
+  libraryAPI,
+  symphonyAPI,
+  therapyAPI,
+  feelHearAPI,
+  feelFlowAPI,
+  wellnessAPI,
+}

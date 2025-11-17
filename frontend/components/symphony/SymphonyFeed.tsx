@@ -2,10 +2,9 @@
 
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Heart, Send, Sparkles } from 'lucide-react'
-import { formatDistanceToNow } from 'date-fns'
+import { Send, Heart, MessageCircle, Plus } from 'lucide-react'
 
-interface SymphonyPost {
+interface Post {
   id: string
   emotion_label: string
   color_code: string | null
@@ -15,39 +14,41 @@ interface SymphonyPost {
 }
 
 interface SymphonyFeedProps {
-  posts: SymphonyPost[]
+  posts: Post[]
   onSubmitPost: (emotion: string, text?: string) => Promise<void>
   onResonate: (postId: string) => Promise<void>
 }
 
-const EMOTION_OPTIONS = [
-  { label: 'Happy', emoji: '😊', color: '#FFD700' },
-  { label: 'Calm', emoji: '😌', color: '#87CEEB' },
-  { label: 'Excited', emoji: '🤩', color: '#FF6B6B' },
-  { label: 'Grateful', emoji: '🙏', color: '#F1C40F' },
-  { label: 'Sad', emoji: '😢', color: '#4A90E2' },
-  { label: 'Anxious', emoji: '😰', color: '#9B59B6' },
-  { label: 'Stressed', emoji: '😫', color: '#E74C3C' },
-  { label: 'Tired', emoji: '😴', color: '#7F8C8D' },
-  { label: 'Focused', emoji: '🎯', color: '#27AE60' },
-  { label: 'Hopeful', emoji: '🌟', color: '#3498DB' },
+const emotions = [
+  { label: 'joy', emoji: '😊', color: '#FFD700' },
+  { label: 'calm', emoji: '😌', color: '#87CEEB' },
+  { label: 'excited', emoji: '🤩', color: '#FF4500' },
+  { label: 'grateful', emoji: '🙏', color: '#FFB6C1' },
+  { label: 'hopeful', emoji: '🌟', color: '#98FB98' },
+  { label: 'content', emoji: '😊', color: '#32CD32' },
+  { label: 'peaceful', emoji: '☮️', color: '#E0E6FF' },
+  { label: 'sadness', emoji: '😢', color: '#4169E1' },
+  { label: 'anxious', emoji: '😰', color: '#9370DB' },
+  { label: 'lonely', emoji: '😔', color: '#708090' },
+  { label: 'overwhelmed', emoji: '😵', color: '#B22222' },
+  { label: 'anger', emoji: '😠', color: '#DC143C' },
 ]
 
 export default function SymphonyFeed({ posts, onSubmitPost, onResonate }: SymphonyFeedProps) {
-  const [selectedEmotion, setSelectedEmotion] = useState<string | null>(null)
-  const [text, setText] = useState('')
+  const [showComposer, setShowComposer] = useState(false)
+  const [selectedEmotion, setSelectedEmotion] = useState('')
+  const [postText, setPostText] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [showForm, setShowForm] = useState(false)
 
   const handleSubmit = async () => {
     if (!selectedEmotion) return
 
     setIsSubmitting(true)
     try {
-      await onSubmitPost(selectedEmotion, text || undefined)
-      setSelectedEmotion(null)
-      setText('')
-      setShowForm(false)
+      await onSubmitPost(selectedEmotion, postText.trim() || undefined)
+      setPostText('')
+      setSelectedEmotion('')
+      setShowComposer(false)
     } catch (error) {
       console.error('Error submitting post:', error)
     } finally {
@@ -55,163 +56,184 @@ export default function SymphonyFeed({ posts, onSubmitPost, onResonate }: Sympho
     }
   }
 
-  return (
-    <div className="space-y-6">
-      {/* Contribution Form */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="card p-6"
-      >
-        <div className="flex items-center gap-2 mb-4">
-          <Sparkles className="w-5 h-5 text-brand" />
-          <h3 className="text-lg font-bold">Share Your Feeling</h3>
-        </div>
+  const formatTimeAgo = (timestamp: string) => {
+    const now = new Date()
+    const postTime = new Date(timestamp)
+    const diffMs = now.getTime() - postTime.getTime()
+    const diffMins = Math.floor(diffMs / (1000 * 60))
+    
+    if (diffMins < 1) return 'just now'
+    if (diffMins < 60) return `${diffMins}m ago`
+    
+    const diffHours = Math.floor(diffMins / 60)
+    if (diffHours < 24) return `${diffHours}h ago`
+    
+    const diffDays = Math.floor(diffHours / 24)
+    return `${diffDays}d ago`
+  }
 
-        {!showForm ? (
-          <button
-            onClick={() => setShowForm(true)}
-            className="w-full py-3 bg-gradient-to-r from-brand to-purple-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity"
+  const getEmotionData = (emotion: string) => {
+    return emotions.find(e => e.label === emotion) || { emoji: '💭', color: '#888888' }
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className="card p-6 h-full flex flex-col"
+    >
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <MessageCircle className="w-6 h-6 text-brand" />
+          <div>
+            <h2 className="text-xl font-bold">Symphony Feed</h2>
+            <p className="text-sm text-gray-500">Anonymous emotional sharing</p>
+          </div>
+        </div>
+        
+        <button
+          onClick={() => setShowComposer(!showComposer)}
+          className="p-2 bg-brand text-white rounded-lg hover:bg-brand-deep transition-colors"
+        >
+          <Plus className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* Composer */}
+      <AnimatePresence>
+        {showComposer && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mb-6 p-4 bg-gray-50 dark:bg-dark-deep rounded-xl"
           >
-            Contribute to Symphony
-          </button>
-        ) : (
-          <div className="space-y-4">
+            <h3 className="font-semibold mb-3">Share your feeling</h3>
+            
             {/* Emotion Selection */}
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                How are you feeling?
-              </label>
-              <div className="grid grid-cols-5 gap-2">
-                {EMOTION_OPTIONS.map((emotion) => (
-                  <button
-                    key={emotion.label}
-                    onClick={() => setSelectedEmotion(emotion.label.toLowerCase())}
-                    className={`p-3 rounded-lg border-2 transition-all ${
-                      selectedEmotion === emotion.label.toLowerCase()
-                        ? 'border-brand bg-brand/10 scale-105'
-                        : 'border-gray-200 dark:border-dark-border hover:border-brand/50'
-                    }`}
-                    style={{
-                      borderColor:
-                        selectedEmotion === emotion.label.toLowerCase()
-                          ? emotion.color
-                          : undefined,
-                    }}
-                  >
-                    <div className="text-2xl mb-1">{emotion.emoji}</div>
-                    <div className="text-xs">{emotion.label}</div>
-                  </button>
-                ))}
-              </div>
+            <div className="grid grid-cols-4 gap-2 mb-4">
+              {emotions.map((emotion) => (
+                <button
+                  key={emotion.label}
+                  onClick={() => setSelectedEmotion(emotion.label)}
+                  className={`p-2 rounded-lg text-center transition-all ${
+                    selectedEmotion === emotion.label
+                      ? 'bg-brand text-white scale-105'
+                      : 'bg-white dark:bg-dark-card hover:bg-gray-100 dark:hover:bg-dark-border'
+                  }`}
+                >
+                  <div className="text-lg mb-1">{emotion.emoji}</div>
+                  <div className="text-xs capitalize">{emotion.label}</div>
+                </button>
+              ))}
             </div>
 
             {/* Optional Text */}
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                Share more (optional)
-              </label>
-              <textarea
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                maxLength={200}
-                placeholder="Express yourself in a few words..."
-                className="w-full px-4 py-3 border-2 border-gray-200 dark:border-dark-border rounded-xl focus:border-brand focus:ring-2 focus:ring-brand/20 outline-none resize-none"
-                rows={3}
-              />
-              <div className="text-xs text-gray-500 text-right mt-1">
-                {text.length}/200
+            <textarea
+              value={postText}
+              onChange={(e) => setPostText(e.target.value)}
+              placeholder="Share more about how you're feeling... (optional)"
+              className="w-full p-3 border border-gray-200 dark:border-dark-border rounded-lg bg-white dark:bg-dark-card resize-none"
+              rows={3}
+              maxLength={280}
+            />
+            
+            <div className="flex items-center justify-between mt-3">
+              <span className="text-xs text-gray-500">
+                {postText.length}/280 characters
+              </span>
+              
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowComposer(false)}
+                  className="px-4 py-2 text-gray-600 hover:bg-gray-100 dark:hover:bg-dark-border rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSubmit}
+                  disabled={!selectedEmotion || isSubmitting}
+                  className="px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-deep transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {isSubmitting ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
+                  Share
+                </button>
               </div>
             </div>
-
-            {/* Actions */}
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  setShowForm(false)
-                  setSelectedEmotion(null)
-                  setText('')
-                }}
-                className="flex-1 px-4 py-2 bg-gray-100 dark:bg-dark-deep rounded-lg hover:bg-gray-200 dark:hover:bg-dark-card transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={!selectedEmotion || isSubmitting}
-                className="flex-1 px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-deep disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
-              >
-                {isSubmitting ? (
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                ) : (
-                  <>
-                    <Send className="w-4 h-4" />
-                    Share Anonymously
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
+          </motion.div>
         )}
-      </motion.div>
+      </AnimatePresence>
 
       {/* Feed */}
-      <div className="card p-6">
-        <h3 className="text-lg font-bold mb-4">Community Feelings</h3>
-
+      <div className="flex-1 overflow-y-auto space-y-3 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600">
         {posts.length === 0 ? (
-          <p className="text-center text-gray-500 py-8">
-            No feelings shared yet. Be the first!
-          </p>
+          <div className="text-center py-12 text-gray-500">
+            <MessageCircle className="w-12 h-12 mx-auto mb-3 opacity-50" />
+            <p className="text-sm">No posts yet. Be the first to share!</p>
+          </div>
         ) : (
-          <div className="space-y-3 max-h-[600px] overflow-y-auto">
-            <AnimatePresence>
-              {posts.map((post, index) => (
+          <AnimatePresence>
+            {posts.map((post, index) => {
+              const emotionData = getEmotionData(post.emotion_label)
+              
+              return (
                 <motion.div
                   key={post.id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -20 }}
                   transition={{ delay: index * 0.05 }}
-                  className="p-4 bg-gray-50 dark:bg-dark-deep rounded-xl hover:shadow-md transition-shadow"
+                  className="p-4 bg-white dark:bg-dark-card rounded-xl border border-gray-200 dark:border-dark-border hover:shadow-md transition-shadow"
                 >
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div 
+                      className="w-10 h-10 rounded-full flex items-center justify-center text-lg"
+                      style={{ backgroundColor: `${emotionData.color}20` }}
+                    >
+                      {emotionData.emoji}
+                    </div>
+                    
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
-                        <div
-                          className="w-3 h-3 rounded-full"
-                          style={{
-                            backgroundColor: post.color_code || '#9B7FFF',
+                        <span 
+                          className="px-2 py-1 rounded-full text-xs font-medium capitalize"
+                          style={{ 
+                            backgroundColor: `${emotionData.color}20`,
+                            color: emotionData.color
                           }}
-                        />
-                        <span className="font-medium capitalize">
+                        >
                           {post.emotion_label}
                         </span>
                         <span className="text-xs text-gray-500">
-                          {formatDistanceToNow(new Date(post.timestamp), {
-                            addSuffix: true,
-                          })}
+                          {formatTimeAgo(post.timestamp)}
                         </span>
                       </div>
+                      
                       {post.short_text && (
-                        <p className="text-sm text-gray-700 dark:text-gray-300">
+                        <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
                           {post.short_text}
                         </p>
                       )}
+                      
+                      <button
+                        onClick={() => onResonate(post.id)}
+                        className="flex items-center gap-2 text-xs text-gray-500 hover:text-red-500 transition-colors"
+                      >
+                        <Heart className="w-4 h-4" />
+                        <span>{post.resonance_count} resonating</span>
+                      </button>
                     </div>
-                    <button
-                      onClick={() => onResonate(post.id)}
-                      className="p-2 hover:bg-white dark:hover:bg-dark-card rounded-lg transition-colors group"
-                    >
-                      <Heart className="w-5 h-5 text-gray-400 group-hover:text-red-500 group-hover:fill-red-500 transition-colors" />
-                    </button>
                   </div>
                 </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
+              )
+            })}
+          </AnimatePresence>
         )}
       </div>
-    </div>
+    </motion.div>
   )
 }

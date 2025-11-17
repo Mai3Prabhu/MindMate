@@ -1,302 +1,203 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { 
-  Bold, Italic, Underline, List, ListOrdered, 
-  Heading1, Heading2, Save, Loader2, Check, Mic
-} from 'lucide-react'
+import { Save, Smile, Calendar, Tag } from 'lucide-react'
 import { journalAPI } from '@/lib/api'
 
 interface JournalEditorProps {
   entryId?: string
   initialContent?: string
   initialMoodTag?: string
-  initialTheme?: string
-  onSave?: (entryId: string) => void
+  initialTheme: string
+  onSave: (entryId: string) => void
 }
+
+const moodTags = [
+  { label: 'Happy', emoji: '😊', color: 'bg-yellow-100 text-yellow-800' },
+  { label: 'Calm', emoji: '😌', color: 'bg-blue-100 text-blue-800' },
+  { label: 'Excited', emoji: '🤩', color: 'bg-orange-100 text-orange-800' },
+  { label: 'Grateful', emoji: '🙏', color: 'bg-green-100 text-green-800' },
+  { label: 'Reflective', emoji: '🤔', color: 'bg-purple-100 text-purple-800' },
+  { label: 'Anxious', emoji: '😰', color: 'bg-red-100 text-red-800' },
+  { label: 'Sad', emoji: '😢', color: 'bg-gray-100 text-gray-800' },
+  { label: 'Peaceful', emoji: '☮️', color: 'bg-indigo-100 text-indigo-800' },
+]
 
 export default function JournalEditor({
   entryId,
   initialContent = '',
-  initialMoodTag,
-  initialTheme = 'minimal',
+  initialMoodTag = '',
+  initialTheme,
   onSave
 }: JournalEditorProps) {
   const [content, setContent] = useState(initialContent)
-  const [moodTag, setMoodTag] = useState(initialMoodTag || '')
+  const [moodTag, setMoodTag] = useState(initialMoodTag)
   const [isSaving, setIsSaving] = useState(false)
-  const [lastSaved, setLastSaved] = useState<Date | null>(null)
-  const [isListening, setIsListening] = useState(false)
-  const editorRef = useRef<HTMLDivElement>(null)
-  const autoSaveTimerRef = useRef<NodeJS.Timeout>()
-  const recognitionRef = useRef<any>(null)
+  const [wordCount, setWordCount] = useState(0)
+  const [showMoodSelector, setShowMoodSelector] = useState(false)
 
-  // Initialize speech recognition
   useEffect(() => {
-    if (typeof window !== 'undefined' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-      const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition
-      recognitionRef.current = new SpeechRecognition()
-      recognitionRef.current.continuous = true
-      recognitionRef.current.interimResults = true
-      
-      recognitionRef.current.onresult = (event: any) => {
-        let interimTranscript = ''
-        let finalTranscript = ''
-        
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript
-          if (event.results[i].isFinal) {
-            finalTranscript += transcript + ' '
-          } else {
-            interimTranscript += transcript
-          }
-        }
-        
-        if (finalTranscript) {
-          setContent(prev => prev + finalTranscript)
-        }
-      }
-      
-      recognitionRef.current.onerror = (event: any) => {
-        console.error('Speech recognition error:', event.error)
-        setIsListening(false)
-      }
-      
-      recognitionRef.current.onend = () => {
-        setIsListening(false)
-      }
-    }
-    
-    return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop()
-      }
-    }
-  }, [])
-
-  // Auto-save every 10 seconds
-  useEffect(() => {
-    if (content && content !== initialContent) {
-      if (autoSaveTimerRef.current) {
-        clearTimeout(autoSaveTimerRef.current)
-      }
-      
-      autoSaveTimerRef.current = setTimeout(() => {
-        handleSave(true)
-      }, 10000)
-    }
-    
-    return () => {
-      if (autoSaveTimerRef.current) {
-        clearTimeout(autoSaveTimerRef.current)
-      }
-    }
+    const words = content.trim().split(/\s+/).filter(word => word.length > 0)
+    setWordCount(words.length)
   }, [content])
 
-  const handleSave = async (isAutoSave = false) => {
+  const handleSave = async () => {
     if (!content.trim()) return
 
+    setIsSaving(true)
     try {
-      setIsSaving(true)
-      
-      const data = {
-        content,
-        mood_tag: moodTag || undefined,
-        theme: initialTheme,
-      }
-      
       let savedEntryId = entryId
-      
+
       if (entryId) {
-        await journalAPI.updateEntry(entryId, data)
+        // Update existing entry
+        await journalAPI.updateEntry(entryId, {
+          content: content.trim(),
+          mood_tag: moodTag || undefined,
+          theme: initialTheme
+        })
       } else {
-        const result = await journalAPI.createEntry(data)
-        savedEntryId = result.id
+        // Create new entry
+        const newEntry = await journalAPI.createEntry({
+          content: content.trim(),
+          mood_tag: moodTag || undefined,
+          theme: initialTheme
+        })
+        savedEntryId = newEntry.id
       }
-      
-      setLastSaved(new Date())
-      
-      if (!isAutoSave && savedEntryId) {
-        onSave?.(savedEntryId)
-      }
+
+      onSave(savedEntryId!)
     } catch (error) {
-      console.error('Error saving journal entry:', error)
+      console.error('Error saving entry:', error)
     } finally {
       setIsSaving(false)
     }
   }
 
-  const applyFormat = (command: string, value?: string) => {
-    document.execCommand(command, false, value)
-    editorRef.current?.focus()
+  const getCurrentDate = () => {
+    return new Date().toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    })
   }
-
-  const toggleVoiceInput = () => {
-    if (!recognitionRef.current) {
-      alert('Speech recognition is not supported in your browser')
-      return
-    }
-    
-    if (isListening) {
-      recognitionRef.current.stop()
-      setIsListening(false)
-    } else {
-      recognitionRef.current.start()
-      setIsListening(true)
-    }
-  }
-
-  const moods = ['Happy', 'Grateful', 'Calm', 'Anxious', 'Sad', 'Excited', 'Tired', 'Stressed']
 
   return (
-    <div className="space-y-4">
-      {/* Toolbar */}
-      <div className="flex items-center justify-between gap-2 p-2 bg-gray-50 dark:bg-dark-deep rounded-xl">
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => applyFormat('bold')}
-            className="p-2 hover:bg-white dark:hover:bg-dark-card rounded-lg transition-colors"
-            title="Bold (Ctrl+B)"
-          >
-            <Bold className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => applyFormat('italic')}
-            className="p-2 hover:bg-white dark:hover:bg-dark-card rounded-lg transition-colors"
-            title="Italic (Ctrl+I)"
-          >
-            <Italic className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => applyFormat('underline')}
-            className="p-2 hover:bg-white dark:hover:bg-dark-card rounded-lg transition-colors"
-            title="Underline (Ctrl+U)"
-          >
-            <Underline className="w-4 h-4" />
-          </button>
-          
-          <div className="w-px h-6 bg-gray-300 dark:bg-dark-border mx-1" />
-          
-          <button
-            onClick={() => applyFormat('formatBlock', '<h1>')}
-            className="p-2 hover:bg-white dark:hover:bg-dark-card rounded-lg transition-colors"
-            title="Heading 1"
-          >
-            <Heading1 className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => applyFormat('formatBlock', '<h2>')}
-            className="p-2 hover:bg-white dark:hover:bg-dark-card rounded-lg transition-colors"
-            title="Heading 2"
-          >
-            <Heading2 className="w-4 h-4" />
-          </button>
-          
-          <div className="w-px h-6 bg-gray-300 dark:bg-dark-border mx-1" />
-          
-          <button
-            onClick={() => applyFormat('insertUnorderedList')}
-            className="p-2 hover:bg-white dark:hover:bg-dark-card rounded-lg transition-colors"
-            title="Bullet List"
-          >
-            <List className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => applyFormat('insertOrderedList')}
-            className="p-2 hover:bg-white dark:hover:bg-dark-card rounded-lg transition-colors"
-            title="Numbered List"
-          >
-            <ListOrdered className="w-4 h-4" />
-          </button>
-          
-          <div className="w-px h-6 bg-gray-300 dark:bg-dark-border mx-1" />
-          
-          <button
-            onClick={toggleVoiceInput}
-            className={`p-2 rounded-lg transition-colors ${
-              isListening 
-                ? 'bg-red-500 text-white hover:bg-red-600' 
-                : 'hover:bg-white dark:hover:bg-dark-card'
-            }`}
-            title="Voice to Text"
-          >
-            <Mic className="w-4 h-4" />
-          </button>
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="h-full flex flex-col"
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <Calendar className="w-5 h-5 text-brand" />
+          <div>
+            <h3 className="font-semibold">
+              {entryId ? 'Edit Entry' : 'New Entry'}
+            </h3>
+            <p className="text-sm text-gray-500">{getCurrentDate()}</p>
+          </div>
         </div>
-        
+
         <div className="flex items-center gap-2">
-          {lastSaved && (
-            <span className="text-xs text-gray-500 flex items-center gap-1">
-              <Check className="w-3 h-3" />
-              Saved {lastSaved.toLocaleTimeString()}
-            </span>
-          )}
-          
           <button
-            onClick={() => handleSave(false)}
-            disabled={isSaving || !content.trim()}
-            className="px-4 py-2 bg-brand text-white rounded-lg font-medium hover:bg-brand-deep disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+            onClick={() => setShowMoodSelector(!showMoodSelector)}
+            className="flex items-center gap-2 px-3 py-2 bg-gray-100 dark:bg-dark-deep hover:bg-gray-200 dark:hover:bg-dark-card rounded-lg transition-colors"
+          >
+            <Smile className="w-4 h-4" />
+            <span className="text-sm">Mood</span>
+          </button>
+
+          <button
+            onClick={handleSave}
+            disabled={!content.trim() || isSaving}
+            className="flex items-center gap-2 px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-deep transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isSaving ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Saving...
-              </>
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
             ) : (
-              <>
-                <Save className="w-4 h-4" />
-                Save
-              </>
+              <Save className="w-4 h-4" />
             )}
+            <span className="text-sm">Save</span>
           </button>
         </div>
       </div>
 
-      {/* Editor */}
-      <div
-        ref={editorRef}
-        contentEditable
-        onInput={(e) => setContent(e.currentTarget.textContent || '')}
-        className="min-h-[400px] p-6 bg-white dark:bg-dark-card border-2 border-gray-200 dark:border-dark-border rounded-xl focus:border-brand focus:ring-2 focus:ring-brand/20 outline-none transition-all prose prose-sm dark:prose-invert max-w-none"
-        placeholder="Start writing..."
-        suppressContentEditableWarning
-      >
-        {initialContent}
-      </div>
-
-      {/* Mood Tags */}
-      <div>
-        <label className="text-sm font-medium block mb-2">How are you feeling?</label>
-        <div className="flex flex-wrap gap-2">
-          {moods.map((mood) => (
-            <button
-              key={mood}
-              onClick={() => setMoodTag(mood.toLowerCase())}
-              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
-                moodTag === mood.toLowerCase()
-                  ? 'bg-brand text-white'
-                  : 'bg-gray-100 dark:bg-dark-deep text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-dark-card'
-              }`}
-            >
-              {mood}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {isListening && (
+      {/* Mood Selector */}
+      {showMoodSelector && (
         <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center gap-2"
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          exit={{ opacity: 0, height: 0 }}
+          className="mb-4 p-4 bg-gray-50 dark:bg-dark-deep rounded-xl"
         >
-          <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-          <span className="text-sm text-red-700 dark:text-red-300">
-            Listening... Speak now
-          </span>
+          <div className="flex items-center gap-2 mb-3">
+            <Tag className="w-4 h-4 text-brand" />
+            <span className="text-sm font-medium">How are you feeling?</span>
+          </div>
+          
+          <div className="flex flex-wrap gap-2">
+            {moodTags.map((mood) => (
+              <button
+                key={mood.label}
+                onClick={() => {
+                  setMoodTag(moodTag === mood.label ? '' : mood.label)
+                  setShowMoodSelector(false)
+                }}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                  moodTag === mood.label
+                    ? 'bg-brand text-white scale-105'
+                    : `${mood.color} hover:scale-105`
+                }`}
+              >
+                <span>{mood.emoji}</span>
+                <span>{mood.label}</span>
+              </button>
+            ))}
+          </div>
         </motion.div>
       )}
-    </div>
+
+      {/* Selected Mood Display */}
+      {moodTag && !showMoodSelector && (
+        <div className="mb-4">
+          <div className="inline-flex items-center gap-2 px-3 py-2 bg-brand/10 text-brand rounded-lg">
+            <span>{moodTags.find(m => m.label === moodTag)?.emoji}</span>
+            <span className="text-sm font-medium">{moodTag}</span>
+            <button
+              onClick={() => setMoodTag('')}
+              className="ml-1 text-brand/70 hover:text-brand"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Editor */}
+      <div className="flex-1 flex flex-col">
+        <textarea
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          placeholder="What's on your mind today? Write freely about your thoughts, feelings, experiences, or anything you'd like to remember..."
+          className="flex-1 w-full p-4 border-0 bg-transparent resize-none focus:outline-none text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500"
+          style={{ minHeight: '300px' }}
+          autoFocus
+        />
+
+        {/* Footer Stats */}
+        <div className="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-dark-border">
+          <div className="text-sm text-gray-500">
+            {wordCount} {wordCount === 1 ? 'word' : 'words'}
+          </div>
+          
+          <div className="text-xs text-gray-400">
+            {entryId ? 'Last saved: ' + new Date().toLocaleTimeString() : 'Unsaved changes'}
+          </div>
+        </div>
+      </div>
+    </motion.div>
   )
 }
