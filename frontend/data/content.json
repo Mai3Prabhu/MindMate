@@ -1,0 +1,134 @@
+[
+  {
+    "id": "1",
+    "title": "Introduction to Mindfulness Meditation",
+    "type": "Article",
+    "category": "Mindful",
+    "duration": "10 min",
+    "thumbnail": "/content-thumbnails/mindfulness.jpg",
+    "description": "A beginner-friendly guide to mindfulness practices and meditation techniques.",
+    "link": "https://www.mindful.org/how-to-meditate/",
+    "tags": ["meditation", "mindfulness", "beginner"]
+  },
+  {
+    "id": "2",
+    "title": "Managing Anxiety Through Breathing",
+    "type": "Video",
+    "category": "Emotional Wellness",
+    "duration": "15 min",
+    "thumbnail": "/content-thumbnails/anxiety.jpg",
+    "description": "Learn effective breathing techniques for anxiety relief and emotional regulation.",
+    "link": "https://www.youtube.com/watch?v=SEfs5TJZ6Nk",
+    "tags": ["anxiety", "breathing", "techniques"]
+  },
+  {
+    "id": "3",
+    "title": "The Science of Sleep",
+    "type": "Podcast",
+    "category": "Sleep & Relaxation",
+    "duration": "45 min",
+    "thumbnail": "/content-thumbnails/sleep.jpg",
+    "description": "Understanding sleep cycles and how to improve your sleep quality naturally.",
+    "link": "https://example.com/sleep-podcast",
+    "tags": ["sleep", "health", "science"]
+  },
+  {
+    "id": "4",
+    "title": "Cognitive Behavioral Therapy Basics",
+    "type": "Article",
+    "category": "Cognitive",
+    "duration": "12 min",
+    "thumbnail": "/content-thumbnails/cbt.jpg",
+    "description": "Learn the fundamentals of CBT and how it can help reshape negative thought patterns.",
+    "link": "https://example.com/cbt-basics",
+    "tags": ["cbt", "therapy", "cognitive"]
+  },
+  {
+    "id": "5",
+    "title": "Building Healthy Relationships",
+    "type": "Video",
+    "category": "Relationships",
+    "duration": "20 min",
+    "thumbnail": "/content-thumbnails/relationships.jpg",
+    "description": "Essential communication skills and boundaries for healthier relationships.",
+    "link": "https://example.com/relationships",
+    "tags": ["relationships", "communication", "boundaries"]
+  },
+  {
+    "id": "6",
+    "title": "Stress Management Techniques",
+    "type": "Article",
+    "category": "Stress Management",
+    "duration": "8 min",
+    "thumbnail": "/content-thumbnails/stress.jpg",
+    "description": "Practical strategies to manage and reduce stress in daily life.",
+    "link": "https://example.com/stress-management",
+    "tags": ["stress", "management", "wellness"]
+  },
+  {
+    "id": "7",
+    "title": "Guided Body Scan Meditation",
+    "type": "Podcast",
+    "category": "Mindful",
+    "duration": "30 min",
+    "thumbnail": "/content-thumbnails/body-scan.jpg",
+    "description": "A soothing guided meditation to release tension and promote relaxation.",
+    "link": "https://example.com/body-scan",
+    "tags": ["meditation", "relaxation", "guided"]
+  },
+  {
+    "id": "8",
+    "title": "Productivity Without Burnout",
+    "type": "Article",
+    "category": "Productivity",
+    "duration": "15 min",
+    "thumbnail": "/content-thumbnails/productivity.jpg",
+    "description": "Sustainable productivity strategies that prioritize mental health.",
+    "link": "https://example.com/productivity",
+    "tags": ["productivity", "burnout", "balance"]
+  },
+  {
+    "id": "9",
+    "title": "Understanding Emotional Intelligence",
+    "type": "Video",
+    "category": "Emotional Wellness",
+    "duration": "25 min",
+    "thumbnail": "/content-thumbnails/eq.jpg",
+    "description": "Develop your emotional intelligence for better self-awareness and relationships.",
+    "link": "https://example.com/emotional-intelligence",
+    "tags": ["emotional intelligence", "self-awareness", "growth"]
+  },
+  {
+    "id": "10",
+    "title": "Progressive Muscle Relaxation",
+    "type": "Activity",
+    "category": "Sleep & Relaxation",
+    "duration": "20 min",
+    "thumbnail": "/content-thumbnails/pmr.jpg",
+    "description": "Interactive exercise to systematically relax your body and mind.",
+    "link": "https://example.com/pmr",
+    "tags": ["relaxation", "exercise", "sleep"]
+  },
+  {
+    "id": "11",
+    "title": "Journaling for Mental Clarity",
+    "type": "Article",
+    "category": "Mindful",
+    "duration": "10 min",
+    "thumbnail": "/content-thumbnails/journaling.jpg",
+    "description": "How to use journaling as a tool for self-reflection and emotional processing.",
+    "link": "https://example.com/journaling",
+    "tags": ["journaling", "reflection", "clarity"]
+  },
+  {
+    "id": "12",
+    "title": "Overcoming Social Anxiety",
+    "type": "Podcast",
+    "category": "Emotional Wellness",
+    "duration": "40 min",
+    "thumbnail": "/content-thumbnails/social-anxiety.jpg",
+    "description": "Expert insights and practical tips for managing social anxiety.",
+    "link": "https://example.com/social-anxiety",
+    "tags": ["anxiety", "social", "coping"]
+  }
+]

@@ -1,288 +1,248 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
-import { useSession } from 'next-auth/react'
-
-import Navbar from '@/components/Navbar'
-import { Send, Heart, Sparkles, AlertCircle, Bot, User, Loader2, Sparkle } from 'lucide-react'
+import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { empatheticReply, classifyEmotion, detectCrisis } from '@/lib/gemini'
-
-interface Message {
-  role: 'user' | 'therapist'
-  content: string
-  timestamp: Date
-  emotion?: string
-  intensity?: number
-  isCrisis?: boolean
-}
+import { MessageCircle, History, Download, X } from 'lucide-react'
+import AppLayout from '@/components/AppLayout'
+import TherapyChat from '@/components/therapy/TherapyChat'
+import TherapyLog from '@/components/therapy/TherapyLog'
+import SessionExport from '@/components/therapy/SessionExport'
+import { therapyAPI } from '@/lib/api'
 
 export default function TherapyPage() {
-  const { data: session } = useSession()
-  const [mode, setMode] = useState<'gentle' | 'conversational' | 'silent'>('gentle')
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: 'therapist',
-      content: "Hi, I'm here with you. Take a deep breath... How are you feeling coming into this session today?",
-      timestamp: new Date(),
+  const [sessionId, setSessionId] = useState<string | undefined>()
+  const [mode, setMode] = useState<'gentle' | 'conversational' | 'silent'>('conversational')
+  const [showLog, setShowLog] = useState(false)
+  const [showExport, setShowExport] = useState(false)
+  const [showEndSession, setShowEndSession] = useState(false)
+  const [feelingRating, setFeelingRating] = useState<number>(5)
+  const [isEndingSession, setIsEndingSession] = useState(false)
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
+
+  const handleSessionCreated = (newSessionId: string) => {
+    setSessionId(newSessionId)
+  }
+
+  const handleEndSession = async () => {
+    if (!sessionId) return
+
+    try {
+      setIsEndingSession(true)
+      await therapyAPI.closeSession(sessionId, feelingRating)
+      
+      setSessionId(undefined)
+      setShowEndSession(false)
+      setRefreshTrigger(prev => prev + 1)
+      
+      alert('Session ended successfully. Your reflection has been saved.')
+    } catch (error) {
+      console.error('Error ending session:', error)
+      alert('Failed to end session. Please try again.')
+    } finally {
+      setIsEndingSession(false)
     }
-  ])
-  const [input, setInput] = useState('')
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [currentEmotion, setCurrentEmotion] = useState<{label: string; intensity: number} | null>(null)
-  const [sessionSummary, setSessionSummary] = useState<string | null>(null)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  }
 
   const modes = [
-    { id: 'gentle', label: '🌸 Gentle Listener', desc: 'Warm, validating presence' },
-    { id: 'conversational', label: '🌤 Conversational Coach', desc: 'Active, solution-focused' },
-    { id: 'silent', label: '🌙 Silent Space', desc: 'Reflective, minimal responses' },
-  ]
-
-  // Auto-scroll to bottom of messages
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
-
-  const analyzeEmotion = async (text: string) => {
-    try {
-      const result = await classifyEmotion(text, session?.user?.accessToken || '');
-      setCurrentEmotion({
-        label: result.label,
-        intensity: result.intensity
-      });
-      return result;
-    } catch (error) {
-      console.error('Error analyzing emotion:', error);
-      return null;
-    }
-  }
-
-  const checkForCrisis = async (text: string) => {
-    try {
-      const result = await detectCrisis(text, session?.user?.accessToken || '')
-      return result.detected ? result : null
-    } catch (error) {
-      console.error('Error checking for crisis:', error)
-      return null
-    }
-  }
-
-  const handleSend = async () => {
-    if (!input.trim() || isProcessing) return
-
-    const userMessage: Message = {
-      role: 'user',
-      content: input,
-      timestamp: new Date(),
-    }
-
-    setMessages(prev => [...prev, userMessage])
-    setInput('')
-    setIsProcessing(true)
-
-    try {
-      // Analyze emotion from user's message
-      const emotion = await analyzeEmotion(input)
-      
-      // Check for crisis indicators
-      const crisisCheck = await checkForCrisis(input)
-      
-      if (crisisCheck?.detected) {
-        const crisisMessage: Message = {
-          role: 'therapist',
-          content: crisisCheck.message || 'I\'m concerned about what you\'re sharing. Would you like me to help you find professional support?',
-          timestamp: new Date(),
-          isCrisis: true
-        }
-        setMessages(prev => [...prev, crisisMessage])
-        setIsProcessing(false)
-        return
-      }
-
-      // Get empathetic response from Gemini
-      const response = await empatheticReply({
-        userMessage: input,
-        conversationHistory: messages.map(m => ({
-          role: m.role,
-          content: m.content,
-          emotion: m.emotion
-        })),
-        userContext: {
-          preferences: {
-            mode: mode,
-            emotion: emotion?.label || 'neutral'
-          }
-        }
-      }, session?.user?.accessToken || '')
-
-      const therapistMessage: Message = {
-        role: 'therapist',
-        content: response,
-        timestamp: new Date(),
-        emotion: emotion?.label
-      }
-
-      setMessages(prev => [...prev, therapistMessage])
-    } catch (error) {
-      console.error('Error in therapy session:', error)
-      const errorMessage: Message = {
-        role: 'therapist',
-        content: 'I\'m having trouble connecting right now. Could you try again in a moment?',
-        timestamp: new Date()
-      }
-      setMessages(prev => [...prev, errorMessage])
-    } finally {
-      setIsProcessing(false)
-    }
-  }
+    { value: 'gentle', label: 'Gentle Listener', description: 'Soft, validating responses' },
+    { value: 'conversational', label: 'Conversational', description: 'Balanced, engaging dialogue' },
+    { value: 'silent', label: 'Silent Space', description: 'Minimal responses, space to reflect' },
+  ] as const
 
   return (
-    <div className="min-h-screen bg-light-bg dark:bg-dark-bg flex flex-col">
-      <Navbar />
-
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Mode Selector */}
-        <div className="mb-6 flex flex-wrap gap-3">
-          {modes.map((m) => (
+    <AppLayout>
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="max-w-7xl mx-auto"
+      >
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <MessageCircle className="w-8 h-8 text-brand" />
+            <div>
+              <h1 className="text-3xl font-heading font-bold">Therapy Session</h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                AI-powered compassionate support
+              </p>
+            </div>
+          </div>
+          
+          <div className="flex gap-2">
             <button
-              key={m.id}
-              onClick={() => setMode(m.id as any)}
-              className={`px-4 py-2 rounded-xl transition-all ${
-                mode === m.id
-                  ? 'bg-brand text-white shadow-lg'
-                  : 'bg-white dark:bg-dark-card hover:bg-gray-50 dark:hover:bg-dark-deep'
-              }`}
+              onClick={() => setShowLog(!showLog)}
+              className="px-4 py-2 border-2 border-gray-200 dark:border-dark-border rounded-xl font-medium hover:bg-gray-50 dark:hover:bg-dark-deep transition-colors flex items-center gap-2"
             >
-              <div className="font-medium">{m.label}</div>
-              <div className="text-xs opacity-80">{m.desc}</div>
+              <History className="w-4 h-4" />
+              History
             </button>
-          ))}
+            
+            {sessionId && (
+              <>
+                <button
+                  onClick={() => setShowExport(true)}
+                  className="px-4 py-2 border-2 border-gray-200 dark:border-dark-border rounded-xl font-medium hover:bg-gray-50 dark:hover:bg-dark-deep transition-colors flex items-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  Export
+                </button>
+                
+                <button
+                  onClick={() => setShowEndSession(true)}
+                  className="px-4 py-2 bg-brand text-white rounded-xl font-medium hover:bg-brand-deep transition-colors"
+                >
+                  End Session
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Chat Area */}
-          <div className="lg:col-span-2 card p-6 flex flex-col" style={{ height: 'calc(100vh - 280px)' }}>
-            <div className="flex-1 overflow-y-auto space-y-4 mb-4 scrollbar-thin">
-              {messages.map((msg, idx) => (
-                <motion.div
-                  key={idx}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div
-                    className={`max-w-[80%] px-4 py-3 rounded-2xl ${
-                      msg.role === 'user'
-                        ? 'bg-brand text-white'
-                        : 'bg-gray-100 dark:bg-dark-card text-gray-800 dark:text-gray-100'
-                    }`}
+        <div className="grid lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">
+            {!sessionId && (
+              <div className="card p-6 mb-6">
+                <h2 className="text-lg font-semibold mb-4">Choose Your Mode</h2>
+                <div className="grid gap-3">
+                  {modes.map((m) => (
+                    <button
+                      key={m.value}
+                      onClick={() => setMode(m.value)}
+                      className={`p-4 rounded-xl border-2 text-left transition-all ${
+                        mode === m.value
+                          ? 'border-brand bg-brand/5'
+                          : 'border-gray-200 dark:border-dark-border hover:border-brand/50'
+                      }`}
+                    >
+                      <div className="font-medium mb-1">{m.label}</div>
+                      <div className="text-sm text-gray-500 dark:text-gray-400">
+                        {m.description}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="card p-6 h-[600px]">
+              <TherapyChat
+                sessionId={sessionId}
+                mode={mode}
+                onSessionCreated={handleSessionCreated}
+              />
+            </div>
+          </div>
+
+          <div className="lg:col-span-1">
+            {showLog ? (
+              <div className="card p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold">Session History</h2>
+                  <button
+                    onClick={() => setShowLog(false)}
+                    className="p-1 hover:bg-gray-100 dark:hover:bg-dark-deep rounded-lg transition-colors"
                   >
-                    <p className="text-sm">{msg.content}</p>
-                    <p className="text-xs mt-1 opacity-70 text-inherit">
-                      {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <TherapyLog refreshTrigger={refreshTrigger} />
+              </div>
+            ) : (
+              <div className="card p-6">
+                <h2 className="text-lg font-semibold mb-4">About Therapy</h2>
+                <div className="space-y-4 text-sm text-gray-600 dark:text-gray-400">
+                  <p>
+                    This is a safe, judgment-free space to explore your thoughts and feelings.
+                  </p>
+                  <p>
+                    Our AI companion uses context from your previous sessions to provide
+                    personalized, empathetic support.
+                  </p>
+                  <div className="p-3 bg-brand/10 rounded-lg">
+                    <p className="text-brand font-medium mb-1">Remember:</p>
+                    <p className="text-xs">
+                      This is not a replacement for professional mental health care.
+                      If you're in crisis, please contact emergency services or a crisis helpline.
                     </p>
                   </div>
-                </motion.div>
-              ))}
-
-              {isProcessing && (
-                <div className="flex justify-start">
-                  <div className="bg-gray-100 dark:bg-dark-card px-4 py-3 rounded-2xl text-gray-800 dark:text-gray-100">
-                    <div className="flex gap-1">
-                      <div className="w-2 h-2 bg-gray-500 dark:bg-gray-300 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                      <div className="w-2 h-2 bg-gray-500 dark:bg-gray-300 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                      <div className="w-2 h-2 bg-gray-500 dark:bg-gray-300 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Input */}
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                placeholder="Share what's on your mind..."
-                className="flex-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-dark-border focus:outline-none focus:ring-2 focus:ring-brand bg-white dark:bg-dark-card text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
-                disabled={isProcessing}
-              />
-              <button
-                onClick={handleSend}
-                disabled={!input.trim() || isProcessing}
-                className="p-3 rounded-xl bg-brand text-white hover:bg-brand-deep focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <Send className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-
-          {/* Session Journal */}
-          <div className="card p-6">
-            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-              <Heart className="w-5 h-5 text-red-400" />
-              Session Notes
-            </h2>
-
-            <div className="space-y-4">
-              <div>
-                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                  Topics Discussed
-                </label>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <span className="px-3 py-1 bg-brand/10 text-brand rounded-full text-xs">
-                    Stress
-                  </span>
-                  <span className="px-3 py-1 bg-accent-teal/10 text-teal-600 rounded-full text-xs">
-                    Work-life balance
-                  </span>
                 </div>
               </div>
-
-              <div>
-                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                  How I'm feeling (1-10)
-                </label>
-                <input
-                  type="range"
-                  min="1"
-                  max="10"
-                  defaultValue="5"
-                  className="w-full mt-2"
-                />
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                  Key Insights
-                </label>
-                <textarea
-                  className="textarea mt-2"
-                  rows={4}
-                  placeholder="What did I learn today?"
-                ></textarea>
-              </div>
-
-              <button className="btn-primary w-full">
-                Save Session
-              </button>
-            </div>
-
-            {/* Safety Notice */}
-            <div className="mt-6 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-              <div className="flex gap-2">
-                <AlertCircle className="w-4 h-4 text-yellow-600 flex-shrink-0 mt-0.5" />
-                <p className="text-xs text-yellow-800 dark:text-yellow-200">
-                  If you're in crisis, please reach out to a professional helpline immediately.
-                </p>
-              </div>
-            </div>
+            )}
           </div>
         </div>
-      </main>
-    </div>
+      </motion.div>
+
+      <AnimatePresence>
+        {showExport && sessionId && (
+          <SessionExport
+            sessionId={sessionId}
+            onClose={() => setShowExport(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showEndSession && sessionId && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowEndSession(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              className="card p-6 max-w-md w-full"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2 className="text-2xl font-heading font-bold mb-4">End Session</h2>
+              
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+                How are you feeling after this session?
+              </p>
+
+              <div className="mb-6">
+                <label className="text-sm font-medium block mb-3">
+                  Rate your feeling (1-10)
+                </label>
+                <div className="flex gap-2">
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((rating) => (
+                    <button
+                      key={rating}
+                      onClick={() => setFeelingRating(rating)}
+                      className={`flex-1 aspect-square rounded-lg border-2 transition-all ${
+                        feelingRating === rating
+                          ? 'border-brand bg-brand text-white'
+                          : 'border-gray-200 dark:border-dark-border hover:border-brand/50'
+                      }`}
+                    >
+                      {rating}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowEndSession(false)}
+                  className="flex-1 px-4 py-2 border-2 border-gray-200 dark:border-dark-border rounded-xl font-medium hover:bg-gray-50 dark:hover:bg-dark-deep transition-colors"
+                  disabled={isEndingSession}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleEndSession}
+                  disabled={isEndingSession}
+                  className="flex-1 px-4 py-2 bg-brand text-white rounded-xl font-medium hover:bg-brand-deep disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isEndingSession ? 'Ending...' : 'End Session'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </AppLayout>
   )
 }

@@ -37,7 +37,7 @@ export default function JournalPage() {
   const loadEntries = async () => {
     try {
       const data = await journalAPI.getEntries(10)
-      setEntries(data)
+      setEntries(data as JournalEntry[])
     } catch (error) {
       console.error('Error loading entries:', error)
     }
@@ -62,14 +62,80 @@ export default function JournalPage() {
   }
 
   const themes = [
-    { value: 'minimal', label: 'Minimal', bg: 'bg-white dark:bg-dark-bg' },
-    { value: 'nature-forest', label: 'Forest', bg: 'bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20' },
-    { value: 'ocean', label: 'Ocean', bg: 'bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-900/20 dark:to-cyan-900/20' },
-    { value: 'night', label: 'Night', bg: 'bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20' },
-    { value: 'zen', label: 'Zen', bg: 'bg-gradient-to-br from-gray-50 to-stone-50 dark:from-gray-900/20 dark:to-stone-900/20' },
+    { 
+      value: 'minimal', 
+      label: 'Minimal', 
+      bgClass: 'bg-white dark:bg-dark-bg',
+      bgStyle: {},
+      hasImage: false
+    },
+    { 
+      value: 'nature-forest', 
+      label: 'Nature', 
+      bgClass: '',
+      bgStyle: { 
+        background: 'linear-gradient(to bottom right, rgb(240 253 244), rgb(209 250 229))'
+      },
+      darkBgStyle: {
+        background: 'linear-gradient(to bottom right, rgba(20 83 45 / 0.2), rgba(6 78 59 / 0.2))'
+      },
+      hasImage: true,
+      image: '/journal-themes/nature-bg.jpg'
+    },
+    { 
+      value: 'ocean', 
+      label: 'Ocean', 
+      bgClass: '',
+      bgStyle: { 
+        background: 'linear-gradient(to bottom right, rgb(239 246 255), rgb(207 250 254))'
+      },
+      darkBgStyle: {
+        background: 'linear-gradient(to bottom right, rgba(30 58 138 / 0.2), rgba(8 51 68 / 0.2))'
+      },
+      hasImage: true,
+      image: '/journal-themes/ocean-bg.jpg'
+    },
+    { 
+      value: 'night', 
+      label: 'Night', 
+      bgClass: '',
+      bgStyle: { 
+        background: 'linear-gradient(to bottom right, rgb(238 242 255), rgb(243 232 255))'
+      },
+      darkBgStyle: {
+        background: 'linear-gradient(to bottom right, rgba(49 46 129 / 0.2), rgba(88 28 135 / 0.2))'
+      },
+      hasImage: true,
+      image: '/journal-themes/night-bg.jpg'
+    },
+    { 
+      value: 'zen', 
+      label: 'Zen', 
+      bgClass: '',
+      bgStyle: { 
+        background: 'linear-gradient(to bottom right, rgb(249 250 251), rgb(250 250 249))'
+      },
+      darkBgStyle: {
+        background: 'linear-gradient(to bottom right, rgba(17 24 39 / 0.2), rgba(41 37 36 / 0.2))'
+      },
+      hasImage: true,
+      image: '/journal-themes/zen.jpg'
+    },
   ]
 
   const currentTheme = themes.find(t => t.value === theme) || themes[0]
+  
+  // Determine if dark mode is active
+  const [isDark, setIsDark] = useState(false)
+  useEffect(() => {
+    const checkDarkMode = () => {
+      setIsDark(document.documentElement.classList.contains('dark'))
+    }
+    checkDarkMode()
+    const observer = new MutationObserver(checkDarkMode)
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    return () => observer.disconnect()
+  }, [])
 
   // PIN lock disabled - direct access to journal
   return (
@@ -133,7 +199,10 @@ export default function JournalPage() {
                         : 'border-gray-200 dark:border-dark-border hover:border-brand/50'
                     }`}
                   >
-                    <div className={`w-full h-8 rounded ${t.bg} mb-2`} />
+                    <div 
+                      className={`w-full h-8 rounded mb-2 ${t.bgClass}`}
+                      style={isDark && t.darkBgStyle ? t.darkBgStyle : t.bgStyle}
+                    />
                     <span className="text-xs font-medium">{t.label}</span>
                   </button>
                 ))}
@@ -188,40 +257,82 @@ export default function JournalPage() {
 
           {/* Main Content */}
           <div className="lg:col-span-2">
-            <div className={`card p-6 min-h-[600px] ${currentTheme.bg}`}>
-              <AnimatePresence mode="wait">
-                {showCalendar ? (
-                  <motion.div
-                    key="calendar"
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -20 }}
-                  >
-                    <JournalCalendar refreshTrigger={refreshTrigger} />
-                  </motion.div>
-                ) : isCreatingNew || selectedEntry ? (
-                  <motion.div
-                    key="editor"
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -20 }}
-                  >
-                    <JournalEditor
-                      entryId={selectedEntry?.id}
-                      initialContent={selectedEntry?.content}
-                      initialMoodTag={selectedEntry?.mood_tag}
-                      initialTheme={theme}
-                      onSave={handleSave}
-                    />
-                  </motion.div>
-                ) : (
-                  <motion.div
-                    key="empty"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="flex items-center justify-center h-full"
-                  >
+            <div 
+              key={theme}
+              className={`card p-6 min-h-[600px] relative overflow-hidden transition-all duration-300 ${currentTheme.bgClass}`}
+              style={{
+                ...(isDark && currentTheme.darkBgStyle ? currentTheme.darkBgStyle : currentTheme.bgStyle),
+                isolation: 'isolate'
+              }}
+            >
+              {/* Background Image with Smooth Transitions */}
+              {currentTheme.hasImage && currentTheme.image && (
+                <motion.div 
+                  key={currentTheme.image}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.6, ease: "easeInOut" }}
+                  className="absolute inset-0 pointer-events-none"
+                  style={{ zIndex: 0 }}
+                >
+                  <img
+                    src={currentTheme.image}
+                    alt={currentTheme.label}
+                    className="w-full h-full object-cover transition-all duration-700"
+                    style={{ 
+                      opacity: isDark ? 0.15 : 0.25,
+                      filter: 'blur(0.5px)'
+                    }}
+                    onError={(e) => {
+                      console.error('Failed to load image:', currentTheme.image)
+                      e.currentTarget.style.display = 'none'
+                    }}
+                  />
+                  <div 
+                    className="absolute inset-0 backdrop-blur-[0.5px]" 
+                    style={{
+                      background: isDark 
+                        ? 'linear-gradient(to bottom, rgba(15, 14, 20, 0.75), rgba(15, 14, 20, 0.85), rgba(15, 14, 20, 0.92))'
+                        : 'linear-gradient(to bottom, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.92))'
+                    }}
+                  />
+                </motion.div>
+              )}
+              <div className="relative" style={{ zIndex: 1 }}>
+                <AnimatePresence mode="wait">
+                  {showCalendar ? (
+                    <motion.div
+                      key="calendar"
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -20 }}
+                    >
+                      <JournalCalendar refreshTrigger={refreshTrigger} />
+                    </motion.div>
+                  ) : isCreatingNew || selectedEntry ? (
+                    <motion.div
+                      key="editor"
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -20 }}
+                    >
+                      <JournalEditor
+                        entryId={selectedEntry?.id}
+                        initialContent={selectedEntry?.content}
+                        initialMoodTag={selectedEntry?.mood_tag}
+                        initialTheme={theme}
+                        onSave={handleSave}
+                      />
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="empty"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="flex items-center justify-center h-full"
+                    >
                     <div className="text-center">
                       <BookOpen className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
                       <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
@@ -238,8 +349,9 @@ export default function JournalPage() {
                       </button>
                     </div>
                   </motion.div>
-                )}
-              </AnimatePresence>
+                  )}
+                </AnimatePresence>
+              </div>
             </div>
           </div>
         </div>
